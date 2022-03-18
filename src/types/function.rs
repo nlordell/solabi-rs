@@ -1,9 +1,15 @@
 //! Solidity ABI function pointer type.
 
-use crate::types::address::Address;
+use super::{address::Address, Primitive, Word};
 
 /// A function selector type.
 pub struct Selector(pub [u8; 4]);
+
+impl AsRef<[u8]> for Selector {
+    fn as_ref(&self) -> &[u8] {
+        &self.0[..]
+    }
+}
 
 /// Recent Solidity ABI version support function pointers. They are encoded as
 /// a contract address and a selector packed into a `bytes24`.
@@ -13,4 +19,13 @@ pub struct FunctionPtr {
     pub address: Address,
     /// The selector of the contract function getting called.
     pub selector: Selector,
+}
+
+impl Primitive for FunctionPtr {
+    fn to_word(&self) -> Word {
+        let mut word = Word::default();
+        word[..20].copy_from_slice(self.address.as_ref());
+        word[20..24].copy_from_slice(self.selector.as_ref());
+        word
+    }
 }
