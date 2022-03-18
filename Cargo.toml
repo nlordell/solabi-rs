@@ -1,0 +1,9 @@
+[package]
+name = "solabi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ethnum = "1"
+hex = "0.4"
+sha3 = "0.10"
