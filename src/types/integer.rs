@@ -106,7 +106,7 @@ macro_rules! impl_primitive_for_integer {
         }
     };
 
-    // Cratesian product of `$t * $n`
+    // Cartesian product of `$t * $n`
     (__outer: { $($t:ident),* } $rest:tt) => {$(
         impl_primitive_for_integer!(__inner: $t $rest);
     )*};

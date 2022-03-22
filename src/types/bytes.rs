@@ -5,6 +5,7 @@ use crate::encode::{Encode, Encoder, Size};
 use std::ops::{Deref, DerefMut};
 
 /// A wrapper type for bytes.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Bytes<T>(pub T);
 
 impl<T> AsRef<[u8]> for Bytes<T>
