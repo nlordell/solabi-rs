@@ -1,6 +1,7 @@
 //! Solidity bytes type.
 
 use super::{Primitive, Word};
+use crate::encode::{Encode, Encoder, Size};
 use std::ops::{Deref, DerefMut};
 
 /// A wrapper type for bytes.
@@ -53,4 +54,26 @@ macro_rules! impl_primitive_for_fixed_bytes {
 impl_primitive_for_fixed_bytes! {
      1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16,
     17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+}
+
+impl Encode for Bytes<&'_ [u8]> {
+    fn size(&self) -> Size {
+        let words = (self.len() + 31) / 32;
+        Size::Dynamic(1 + words, 0)
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        encoder.write(&self.len());
+        encoder.write_bytes(self);
+    }
+}
+
+impl Encode for Bytes<Vec<u8>> {
+    fn size(&self) -> Size {
+        Bytes(&self[..]).size()
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        Bytes(&self[..]).encode(encoder)
+    }
 }

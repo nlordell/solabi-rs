@@ -1,5 +1,10 @@
 //! Solidity ABI encoding and decoding implementation.
 
+#[cfg(test)]
+#[macro_use]
+mod testutil;
+
+pub mod encode;
 pub mod types;
 
 #[cfg(test)]

@@ -7,3 +7,6 @@ edition = "2021"
 ethnum = "1"
 hex = "0.4"
 sha3 = "0.10"
+
+[dev-dependencies]
+hex-literal = "0.3"

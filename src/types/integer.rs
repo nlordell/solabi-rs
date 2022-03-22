@@ -1,9 +1,8 @@
 //! Solidity primitive integer types.
 
-use std::ops::{Shl, Shr};
-
 use super::{Primitive, Word};
 use ethnum::{AsU256, I256, U256};
+use std::ops::{Deref, Shl, Shr};
 
 macro_rules! impl_primitive_for_as_u256 {
     ($($t:ty,)*) => {$(
@@ -16,8 +15,8 @@ macro_rules! impl_primitive_for_as_u256 {
 }
 
 impl_primitive_for_as_u256! {
-    i8, i16, i32, i64, i128, I256,
-    u8, u16, u32, u64, u128, U256,
+    i8, i16, i32, i64, i128, I256, isize,
+    u8, u16, u32, u64, u128, U256, usize,
     bool,
 }
 
@@ -39,6 +38,14 @@ impl<const N: usize> Int<N> {
     }
 }
 
+impl<const N: usize> Deref for Int<N> {
+    type Target = I256;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 /// An unsigned integer with the specified width.
 ///
 /// This type is needed because there aren't Rust equivalents for all Solidity
@@ -54,6 +61,14 @@ impl<const N: usize> Uint<N> {
     /// Panics on invalid bit-width.
     pub fn new(value: U256) -> Option<Self> {
         resize::<N, _>(value).map(Self)
+    }
+}
+
+impl<const N: usize> Deref for Uint<N> {
+    type Target = U256;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

@@ -1,0 +1,361 @@
+//! Module implementing ABI encoding.
+
+use crate::types::{bytes::Bytes, Primitive, Word};
+use std::{iter, mem};
+
+/// Represents an encodable type.
+pub trait Encode {
+    fn size(&self) -> Size;
+    fn encode(&self, encoder: &mut Encoder);
+}
+
+/// Encoding size.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Size {
+    /// Static type size, specifying the number of words required to represent
+    /// the type.
+    Static(usize),
+
+    /// Dynamic type size, specifying the number of
+    /// the type.
+    Dynamic(usize, usize),
+}
+
+impl Size {
+    /// Combines multiple sizes of fields into the size of their tuple.
+    pub fn tuple(fields: impl IntoIterator<Item = Size>) -> Self {
+        fields
+            .into_iter()
+            .fold(Self::Static(0), |acc, size| match (acc, size) {
+                (Self::Static(h0), Self::Static(h1)) => Self::Static(h0 + h1),
+                (Self::Static(h0), Self::Dynamic(h1, t1)) => Self::Dynamic(h0 + 1, h1 + t1),
+                (Self::Dynamic(h0, t0), Self::Static(h1)) => Self::Dynamic(h0 + h1, t0),
+                _ => {
+                    let (h0, t0) = acc.word_count();
+                    let (h1, t1) = size.word_count();
+                    Self::Dynamic(h0 + 1, t0 + h1 + t1)
+                }
+            })
+    }
+
+    /// Returns the word counts required for the spcified size.
+    pub fn word_count(self) -> (usize, usize) {
+        match self {
+            Self::Static(head) => (head, 0),
+            Self::Dynamic(head, tail) => (head, tail),
+        }
+    }
+
+    /// Returns the byte-length for the specified size.
+    pub fn byte_length(self) -> usize {
+        let (head, tail) = self.word_count();
+        (head + tail) * 32
+    }
+}
+
+/// ABI-encodes a value.
+pub fn encode<T>(value: T) -> Vec<u8>
+where
+    T: Encode,
+{
+    let size = value.size();
+    let mut buffer = vec![0; size.byte_length()];
+    let mut encoder = Encoder::new(&mut buffer, size);
+
+    // Make sure to call `encode` on the value instead of `write`. This is
+    // because the top level tuple that gets encoded never gets redirected
+    // even if it is a dynamic type.
+    value.encode(&mut encoder);
+
+    buffer
+}
+
+/// An ABI encoder
+pub struct Encoder<'a> {
+    head: &'a mut [u8],
+    tail: &'a mut [u8],
+    tail_offset: usize,
+}
+
+impl<'a> Encoder<'a> {
+    /// Create a new ABI encoder with the specified buffer and head/tail word
+    /// count.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the buffer size does not match the word count.
+    fn new(buffer: &'a mut [u8], size: Size) -> Self {
+        assert_eq!(
+            buffer.len(),
+            size.byte_length(),
+            "buffer length does not match encoder size"
+        );
+
+        let (head, _) = size.word_count();
+        let tail_offset = head * 32;
+        let (head, tail) = buffer.split_at_mut(tail_offset);
+        Self {
+            head,
+            tail,
+            tail_offset,
+        }
+    }
+
+    /// Writes a word to the encoder.
+    pub fn write_word(&mut self, word: Word) {
+        self.write_bytes(&word);
+    }
+
+    /// Writes a slice of bytes to the encoder.
+    pub fn write_bytes(&mut self, bytes: &[u8]) {
+        let slot = take(&mut self.head, pad32(bytes.len()));
+        slot[..bytes.len()].copy_from_slice(bytes);
+    }
+
+    /// Slices a chunk off of the encoder's tail.
+    ///
+    /// This method is used for getting a sub-`Encoder` for writing the contents
+    /// of a dynamic type.
+    pub fn slice(&mut self, size: Size) -> Self {
+        let offset = self.tail_offset;
+        self.write(&offset);
+
+        let len = size.byte_length();
+        let slot = take(&mut self.tail, len);
+        self.tail_offset += len;
+
+        Self::new(slot, size)
+    }
+
+    /// Writes a value to the encoder.
+    ///
+    /// This method takes care to either encode the value directly for static
+    /// types or slice off some section of the "tail" for dynamic types.
+    pub fn write<T>(&mut self, value: &T)
+    where
+        T: Encode,
+    {
+        match value.size() {
+            Size::Static(_) => value.encode(self),
+            size => value.encode(&mut self.slice(size)),
+        }
+    }
+}
+
+/// Pads the specified size to a 32-byte boundry.
+fn pad32(value: usize) -> usize {
+    ((value + 31) / 32) * 32
+}
+
+/// Splits an array in-place returning a mutable slice to the chunk that was
+/// split of the front.
+fn take<'a>(buffer: &mut &'a mut [u8], len: usize) -> &'a mut [u8] {
+    let (slot, rest) = mem::take(buffer).split_at_mut(len);
+    *buffer = rest;
+    slot
+}
+
+impl<T> Encode for T
+where
+    T: Primitive,
+{
+    fn size(&self) -> Size {
+        Size::Static(1)
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        encoder.write_word(self.to_word())
+    }
+}
+
+impl<T, const N: usize> Encode for [T; N]
+where
+    T: Encode,
+{
+    fn size(&self) -> Size {
+        Size::tuple(self.iter().map(|item| item.size()))
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        for item in self {
+            encoder.write(item)
+        }
+    }
+}
+
+impl<T, const N: usize> Encode for &'_ [T; N]
+where
+    T: Encode,
+{
+    fn size(&self) -> Size {
+        (**self).size()
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        (**self).encode(encoder)
+    }
+}
+
+impl<T> Encode for &'_ [T]
+where
+    T: Encode,
+{
+    fn size(&self) -> Size {
+        let (head, tail) =
+            Size::tuple(iter::once(Size::Static(1)).chain(self.iter().map(|item| item.size())))
+                .word_count();
+        Size::Dynamic(head, tail)
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        encoder.write(&self.len());
+        for item in *self {
+            encoder.write(item)
+        }
+    }
+}
+
+impl<T> Encode for Vec<T>
+where
+    T: Encode,
+{
+    fn size(&self) -> Size {
+        (&**self).size()
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        (&**self).encode(encoder)
+    }
+}
+
+impl Encode for &'_ str {
+    fn size(&self) -> Size {
+        Bytes(self.as_bytes()).size()
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        Bytes(self.as_bytes()).encode(encoder)
+    }
+}
+
+impl Encode for String {
+    fn size(&self) -> Size {
+        (&**self).size()
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        (&**self).encode(encoder)
+    }
+}
+
+macro_rules! impl_encode_for_tuple {
+    ($($t:ident),*) => {
+        #[allow(non_snake_case, unused_variables)]
+        impl<$($t),*> Encode for ($($t,)*)
+        where
+            $($t: Encode,)*
+        {
+            fn size(&self) -> Size {
+                let ($($t,)*) = self;
+                Size::tuple([
+                    $(($t).size(),)*
+                ])
+            }
+
+            fn encode(&self, encoder: &mut Encoder) {
+                let ($($t,)*) = self;
+                $(encoder.write($t);)*
+            }
+        }
+
+        impl<$($t),*> Encode for &'_ ($($t,)*)
+        where
+            $($t: Encode,)*
+        {
+            fn size(&self) -> Size {
+                (**self).size()
+            }
+
+            fn encode(&self, encoder: &mut Encoder) {
+                (**self).encode(encoder)
+            }
+        }
+    };
+}
+
+impl_encode_for_tuple! {}
+impl_encode_for_tuple! { A }
+impl_encode_for_tuple! { A, B }
+impl_encode_for_tuple! { A, B, C }
+impl_encode_for_tuple! { A, B, C, D }
+impl_encode_for_tuple! { A, B, C, D, E }
+impl_encode_for_tuple! { A, B, C, D, E, F }
+impl_encode_for_tuple! { A, B, C, D, E, F, G }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE }
+impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hex_literal::hex;
+
+    #[test]
+    fn encode_values() {
+        // <https://github.com/ethereum/tests/blob/0e8d25bb613cab7f9e99430f970e1e6cbffdbf1a/ABITests/basic_abi_tests.json>
+        assert_eq!(
+            encode((
+                291,
+                &[1110, 1929][..],
+                Bytes(*b"1234567890"),
+                "Hello, world!"
+            )),
+            hex!(
+                "0000000000000000000000000000000000000000000000000000000000000123
+                 0000000000000000000000000000000000000000000000000000000000000080
+                 3132333435363738393000000000000000000000000000000000000000000000
+                 00000000000000000000000000000000000000000000000000000000000000e0
+                 0000000000000000000000000000000000000000000000000000000000000002
+                 0000000000000000000000000000000000000000000000000000000000000456
+                 0000000000000000000000000000000000000000000000000000000000000789
+                 000000000000000000000000000000000000000000000000000000000000000d
+                 48656c6c6f2c20776f726c642100000000000000000000000000000000000000"
+            ),
+        );
+        assert_eq!(
+            encode(98127491),
+            hex!("0000000000000000000000000000000000000000000000000000000005d94e83"),
+        );
+        assert_eq!(
+            encode((324124, addr!("CD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"))),
+            hex!(
+                "000000000000000000000000000000000000000000000000000000000004f21c
+                 000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"
+            ),
+        );
+        // <https://github.com/ethereum/solidity/blob/43f29c00da02e19ff10d43f7eb6955d627c57728/test/libsolidity/ABIDecoderTests.cpp>
+        todo!();
+    }
+}
