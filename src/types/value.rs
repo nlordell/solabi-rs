@@ -1,6 +1,9 @@
 //! Module containing dynamic Solidity value.
 
-use crate::encode::{Encode, Encoder, Size};
+use crate::{
+    encode::{Encode, Encoder},
+    layout::{Layout, Size},
+};
 
 /// A Solidity value.
 ///
@@ -9,11 +12,13 @@ use crate::encode::{Encode, Encoder, Size};
 /// `serde_json::Value` for Solidity values.
 pub enum Value {}
 
-impl Encode for Value {
+impl Layout for Value {
     fn size(&self) -> Size {
         todo!()
     }
+}
 
+impl Encode for Value {
     fn encode(&self, _: &mut Encoder) {
         todo!()
     }

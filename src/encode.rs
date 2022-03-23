@@ -1,56 +1,15 @@
 //! Module implementing ABI encoding.
 
-use crate::types::{bytes::Bytes, Primitive, Word};
+use crate::{
+    layout::{Layout, Size},
+    types::{bytes::Bytes, Primitive, Word},
+};
 use std::mem;
 
 /// Represents an encodable type.
-pub trait Encode {
-    fn size(&self) -> Size;
+pub trait Encode: Layout {
+    /// Writes the type's data to the specified encoder.
     fn encode(&self, encoder: &mut Encoder);
-}
-
-/// Encoding size.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Size {
-    /// Static type size, specifying the number of words required to represent
-    /// the type.
-    Static(usize),
-
-    /// Dynamic type size, specifying the number of
-    /// the type.
-    Dynamic(usize, usize),
-}
-
-impl Size {
-    /// Combines multiple sizes of fields into the size of their tuple.
-    pub fn tuple(fields: impl IntoIterator<Item = Size>) -> Self {
-        fields
-            .into_iter()
-            .fold(Self::Static(0), |acc, size| match (acc, size) {
-                (Self::Static(h0), Self::Static(h1)) => Self::Static(h0 + h1),
-                (Self::Static(h0), Self::Dynamic(h1, t1)) => Self::Dynamic(h0 + 1, h1 + t1),
-                (Self::Dynamic(h0, t0), Self::Static(h1)) => Self::Dynamic(h0 + h1, t0),
-                _ => {
-                    let (h0, t0) = acc.word_count();
-                    let (h1, t1) = size.word_count();
-                    Self::Dynamic(h0 + 1, t0 + h1 + t1)
-                }
-            })
-    }
-
-    /// Returns the word counts required for the spcified size.
-    pub fn word_count(self) -> (usize, usize) {
-        match self {
-            Self::Static(head) => (head, 0),
-            Self::Dynamic(head, tail) => (head, tail),
-        }
-    }
-
-    /// Returns the byte-length for the specified size.
-    pub fn byte_length(self) -> usize {
-        let (head, tail) = self.word_count();
-        (head + tail) * 32
-    }
 }
 
 /// ABI-encodes a value.
@@ -91,8 +50,7 @@ impl<'a> Encoder<'a> {
             "buffer length does not match encoder size"
         );
 
-        let (head, _) = size.word_count();
-        let tail_offset = head * 32;
+        let tail_offset = size.tail_byte_offset();
         let (head, tail) = buffer.split_at_mut(tail_offset);
         Self {
             head,
@@ -144,7 +102,7 @@ impl<'a> Encoder<'a> {
         T: Encode,
     {
         match value.size() {
-            Size::Static(_) => value.encode(self),
+            Size::Static(..) => value.encode(self),
             size => value.encode(&mut self.slice(size)),
         }
     }
@@ -167,10 +125,6 @@ impl<T> Encode for T
 where
     T: Primitive,
 {
-    fn size(&self) -> Size {
-        Size::Static(1)
-    }
-
     fn encode(&self, encoder: &mut Encoder) {
         encoder.write_word(self.to_word())
     }
@@ -180,10 +134,6 @@ impl<T, const N: usize> Encode for [T; N]
 where
     T: Encode,
 {
-    fn size(&self) -> Size {
-        Size::tuple(self.iter().map(|item| item.size()))
-    }
-
     fn encode(&self, encoder: &mut Encoder) {
         for item in self {
             encoder.write(item)
@@ -195,10 +145,6 @@ impl<T, const N: usize> Encode for &'_ [T; N]
 where
     T: Encode,
 {
-    fn size(&self) -> Size {
-        (**self).size()
-    }
-
     fn encode(&self, encoder: &mut Encoder) {
         (**self).encode(encoder)
     }
@@ -208,15 +154,6 @@ impl<T> Encode for &'_ [T]
 where
     T: Encode,
 {
-    fn size(&self) -> Size {
-        let tail = {
-            let inner_size = Size::tuple(self.iter().map(|item| item.size()));
-            let (head, tail) = inner_size.word_count();
-            head + tail
-        };
-        Size::Dynamic(1, tail)
-    }
-
     fn encode(&self, encoder: &mut Encoder) {
         encoder.write(&self.len());
 
@@ -232,30 +169,18 @@ impl<T> Encode for Vec<T>
 where
     T: Encode,
 {
-    fn size(&self) -> Size {
-        (&**self).size()
-    }
-
     fn encode(&self, encoder: &mut Encoder) {
         (&**self).encode(encoder)
     }
 }
 
 impl Encode for &'_ str {
-    fn size(&self) -> Size {
-        Bytes(self.as_bytes()).size()
-    }
-
     fn encode(&self, encoder: &mut Encoder) {
         Bytes(self.as_bytes()).encode(encoder)
     }
 }
 
 impl Encode for String {
-    fn size(&self) -> Size {
-        (&**self).size()
-    }
-
     fn encode(&self, encoder: &mut Encoder) {
         (&**self).encode(encoder)
     }
@@ -268,13 +193,6 @@ macro_rules! impl_encode_for_tuple {
         where
             $($t: Encode,)*
         {
-            fn size(&self) -> Size {
-                let ($($t,)*) = self;
-                Size::tuple([
-                    $(($t).size(),)*
-                ])
-            }
-
             fn encode(&self, encoder: &mut Encoder) {
                 let ($($t,)*) = self;
                 $(encoder.write($t);)*
@@ -285,10 +203,6 @@ macro_rules! impl_encode_for_tuple {
         where
             $($t: Encode,)*
         {
-            fn size(&self) -> Size {
-                (**self).size()
-            }
-
             fn encode(&self, encoder: &mut Encoder) {
                 (**self).encode(encoder)
             }

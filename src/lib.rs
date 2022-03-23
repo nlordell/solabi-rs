@@ -6,6 +6,7 @@ mod testutil;
 
 pub mod encode;
 pub mod types;
+pub mod layout;
 
 #[cfg(test)]
 mod tests {
