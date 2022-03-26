@@ -1,7 +1,7 @@
 //! Module implementing ABI encoding.
 
 use crate::{
-    layout::{Layout, Size},
+    layout::{self, Layout, Size},
     types::{bytes::Bytes, Primitive, Word},
 };
 use std::mem;
@@ -66,7 +66,7 @@ impl<'a> Encoder<'a> {
 
     /// Writes a slice of bytes to the encoder.
     pub fn write_bytes(&mut self, bytes: &[u8]) {
-        let slot = take(&mut self.head, pad32(bytes.len()));
+        let slot = take(&mut self.head, layout::pad32(bytes.len()));
         slot[..bytes.len()].copy_from_slice(bytes);
     }
 
@@ -106,11 +106,6 @@ impl<'a> Encoder<'a> {
             size => value.encode(&mut self.slice(size)),
         }
     }
-}
-
-/// Pads the specified size to a 32-byte boundry.
-fn pad32(value: usize) -> usize {
-    ((value + 31) / 32) * 32
 }
 
 /// Splits an array in-place returning a mutable slice to the chunk that was

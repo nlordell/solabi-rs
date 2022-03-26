@@ -4,9 +4,10 @@
 #[macro_use]
 mod testutil;
 
+pub mod decode;
 pub mod encode;
-pub mod types;
 pub mod layout;
+pub mod types;
 
 #[cfg(test)]
 mod tests {

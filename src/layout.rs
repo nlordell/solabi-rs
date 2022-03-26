@@ -83,6 +83,11 @@ impl Size {
     }
 }
 
+/// Pads the specified size to a 32-byte boundry.
+pub fn pad32(value: usize) -> usize {
+    ((value + 31) / 32) * 32
+}
+
 impl<T> Layout for T
 where
     T: Primitive,
