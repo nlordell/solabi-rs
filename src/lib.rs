@@ -6,7 +6,6 @@ mod testutil;
 
 pub mod decode;
 pub mod encode;
-pub mod layout;
 pub mod types;
 
 #[cfg(test)]

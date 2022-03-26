@@ -1,13 +1,13 @@
 //! Module implementing ABI encoding.
 
-use crate::{
-    layout::{self, Layout, Size},
-    types::{bytes::Bytes, Primitive, Word},
-};
+use crate::types::{bytes::Bytes, Primitive, Word};
 use std::mem;
 
 /// Represents an encodable type.
-pub trait Encode: Layout {
+pub trait Encode {
+    /// Returns the size information for the type.
+    fn size(&self) -> Size;
+
     /// Writes the type's data to the specified encoder.
     fn encode(&self, encoder: &mut Encoder);
 }
@@ -27,6 +27,79 @@ where
     value.encode(&mut encoder);
 
     buffer
+}
+
+/// Encoding size.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Size {
+    /// Static type size, specifying the number of words required to represent
+    /// the type.
+    Static(usize),
+
+    /// Dynamic type size, specifying the number of words required to represent
+    /// the "head" and the "tail" of the type.
+    Dynamic(usize, usize),
+}
+
+impl Size {
+    /// Combines multiple sizes of fields into the size of their tuple.
+    pub fn tuple(fields: impl IntoIterator<Item = Size>) -> Self {
+        fields
+            .into_iter()
+            .fold(Self::Static(0), |acc, size| match (acc, size) {
+                (Self::Static(h0), Self::Static(h1)) => Self::Static(h0 + h1),
+                (Self::Static(h0), Self::Dynamic(h1, t1)) => Self::Dynamic(h0 + 1, h1 + t1),
+                (Self::Dynamic(h0, t0), Self::Static(h1)) => Self::Dynamic(h0 + h1, t0),
+                _ => {
+                    let (h0, t0) = acc.word_count();
+                    let (h1, t1) = size.word_count();
+                    Self::Dynamic(h0 + 1, t0 + h1 + t1)
+                }
+            })
+    }
+
+    /// Returns the head and tail word counts required for the spcified size.
+    ///
+    /// Note that for static types, the tail word count is always 0.
+    pub fn word_count(&self) -> (usize, usize) {
+        match self {
+            Self::Static(head) => (*head, 0),
+            Self::Dynamic(head, tail) => (*head, *tail),
+        }
+    }
+
+    /// Returns the total word count of the head and tail combined.
+    pub fn total_word_count(&self) -> usize {
+        let (head, tail) = self.word_count();
+        head + tail
+    }
+
+    /// Returns the byte-length for the specified size.
+    pub fn byte_length(&self) -> usize {
+        self.total_word_count() * 32
+    }
+
+    /// Returns the offset, in bytes, of the tail.
+    pub fn tail_byte_offset(&self) -> usize {
+        let (head, _) = self.word_count();
+        head * 32
+    }
+
+    /// Returns `true` if the type is static.
+    pub fn is_static(&self) -> bool {
+        match self {
+            Self::Static(..) => true,
+            Self::Dynamic(..) => false,
+        }
+    }
+
+    /// Returns `true` if the type is dynamic.
+    pub fn is_dynamic(&self) -> bool {
+        match self {
+            Self::Static(..) => false,
+            Self::Dynamic(..) => true,
+        }
+    }
 }
 
 /// An ABI encoder
@@ -66,7 +139,7 @@ impl<'a> Encoder<'a> {
 
     /// Writes a slice of bytes to the encoder.
     pub fn write_bytes(&mut self, bytes: &[u8]) {
-        let slot = take(&mut self.head, layout::pad32(bytes.len()));
+        let slot = take(&mut self.head, pad32(bytes.len()));
         slot[..bytes.len()].copy_from_slice(bytes);
     }
 
@@ -108,6 +181,11 @@ impl<'a> Encoder<'a> {
     }
 }
 
+/// Pads the specified size to a 32-byte boundry.
+fn pad32(value: usize) -> usize {
+    ((value + 31) / 32) * 32
+}
+
 /// Splits an array in-place returning a mutable slice to the chunk that was
 /// split of the front.
 fn take<'a>(buffer: &mut &'a mut [u8], len: usize) -> &'a mut [u8] {
@@ -120,6 +198,10 @@ impl<T> Encode for T
 where
     T: Primitive,
 {
+    fn size(&self) -> Size {
+        Size::Static(1)
+    }
+
     fn encode(&self, encoder: &mut Encoder) {
         encoder.write_word(self.to_word())
     }
@@ -129,6 +211,10 @@ impl<T, const N: usize> Encode for [T; N]
 where
     T: Encode,
 {
+    fn size(&self) -> Size {
+        Size::tuple(self.iter().map(|item| item.size()))
+    }
+
     fn encode(&self, encoder: &mut Encoder) {
         for item in self {
             encoder.write(item)
@@ -140,6 +226,10 @@ impl<T, const N: usize> Encode for &'_ [T; N]
 where
     T: Encode,
 {
+    fn size(&self) -> Size {
+        (**self).size()
+    }
+
     fn encode(&self, encoder: &mut Encoder) {
         (**self).encode(encoder)
     }
@@ -149,6 +239,11 @@ impl<T> Encode for &'_ [T]
 where
     T: Encode,
 {
+    fn size(&self) -> Size {
+        let tail = Size::tuple(self.iter().map(|item| item.size())).total_word_count();
+        Size::Dynamic(1, tail)
+    }
+
     fn encode(&self, encoder: &mut Encoder) {
         encoder.write(&self.len());
 
@@ -164,18 +259,30 @@ impl<T> Encode for Vec<T>
 where
     T: Encode,
 {
+    fn size(&self) -> Size {
+        (&**self).size()
+    }
+
     fn encode(&self, encoder: &mut Encoder) {
         (&**self).encode(encoder)
     }
 }
 
 impl Encode for &'_ str {
+    fn size(&self) -> Size {
+        Bytes(self.as_bytes()).size()
+    }
+
     fn encode(&self, encoder: &mut Encoder) {
         Bytes(self.as_bytes()).encode(encoder)
     }
 }
 
 impl Encode for String {
+    fn size(&self) -> Size {
+        (&**self).size()
+    }
+
     fn encode(&self, encoder: &mut Encoder) {
         (&**self).encode(encoder)
     }
@@ -188,6 +295,13 @@ macro_rules! impl_encode_for_tuple {
         where
             $($t: Encode,)*
         {
+            fn size(&self) -> Size {
+                let ($($t,)*) = self;
+                Size::tuple([
+                    $(($t).size(),)*
+                ])
+            }
+
             fn encode(&self, encoder: &mut Encoder) {
                 let ($($t,)*) = self;
                 $(encoder.write($t);)*
@@ -198,6 +312,10 @@ macro_rules! impl_encode_for_tuple {
         where
             $($t: Encode,)*
         {
+            fn size(&self) -> Size {
+                (**self).size()
+            }
+
             fn encode(&self, encoder: &mut Encoder) {
                 (**self).encode(encoder)
             }

@@ -1,9 +1,9 @@
 //! Solidity ABI decoding.
 
-use crate::{layout::Layout, types::Word};
+use crate::types::Word;
 
 /// Represents a decodable type.
-pub trait Decode: Layout + Sized {
+pub trait Decode: Sized {
     /// Writes the type's data to the specified encoder.
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError>;
 }
