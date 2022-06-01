@@ -1,8 +1,10 @@
 //! Solidity ABI encoding and decoding implementation.
 
+pub mod bytes;
 pub mod decode;
 pub mod encode;
-pub mod types;
+pub mod function;
+pub mod primitive;
 pub mod value;
 
 pub use self::{decode::decode, encode::encode};

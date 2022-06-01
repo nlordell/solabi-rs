@@ -1,6 +1,9 @@
 //! Module implementing ABI encoding.
 
-use crate::types::{bytes::Bytes, Primitive, Word};
+use crate::{
+    bytes::Bytes,
+    primitive::{Primitive, Word},
+};
 use std::mem;
 
 /// Represents an encodable type.
@@ -61,6 +64,12 @@ impl Size {
                     Self::Dynamic(h0 + 1, t0 + h1 + t1)
                 }
             })
+    }
+
+    /// Combines sizes of elements of a dynamic array.
+    pub fn dynamic_array(elements: impl IntoIterator<Item = Size>) -> Self {
+        let tail = Self::tuple(elements).total_word_count();
+        Size::Dynamic(1, tail)
     }
 
     /// Returns the head and tail word counts required for the spcified size.
@@ -245,13 +254,11 @@ where
     T: Encode,
 {
     fn size(&self) -> Size {
-        let tail = Size::tuple(self.iter().map(|item| item.size())).total_word_count();
-        Size::Dynamic(1, tail)
+        Size::dynamic_array(self.iter().map(|item| item.size()))
     }
 
     fn encode(&self, encoder: &mut Encoder) {
         encoder.write(&self.len());
-
         let inner_size = Size::tuple(self.iter().map(|item| item.size()));
         let mut inner = encoder.untail(inner_size);
         for item in *self {
@@ -365,7 +372,7 @@ impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::function::{FunctionPtr, Selector};
+    use crate::function::{FunctionPtr, Selector};
     use ethaddr::address;
     use hex_literal::hex;
 

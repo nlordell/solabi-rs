@@ -1,6 +1,6 @@
 //! Solidity ABI function pointer type.
 
-use super::{Primitive, Word};
+use crate::primitive::{Primitive, Word};
 use ethaddr::Address;
 
 /// A function selector type.
@@ -30,5 +30,13 @@ impl Primitive for FunctionPtr {
         word[..20].copy_from_slice(self.address.as_ref());
         word[20..24].copy_from_slice(self.selector.as_ref());
         word
+    }
+
+    fn cast(word: Word) -> Self {
+        let mut address = Address::default();
+        let mut selector = Selector(Default::default());
+        address.copy_from_slice(&word[..20]);
+        selector.0.copy_from_slice(&word[20..24]);
+        Self { address, selector }
     }
 }

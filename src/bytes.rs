@@ -1,7 +1,9 @@
 //! Solidity bytes type.
 
-use super::{Primitive, Word};
-use crate::encode::{Encode, Encoder, Size};
+use crate::{
+    encode::{Encode, Encoder, Size},
+    primitive::{Primitive, Word},
+};
 use std::ops::{Deref, DerefMut};
 
 /// A wrapper type for bytes.
@@ -47,6 +49,12 @@ macro_rules! impl_primitive_for_fixed_bytes {
                 let mut word = Word::default();
                 word[..$n].copy_from_slice(self.as_ref());
                 word
+            }
+
+            fn cast(word: Word) -> Self {
+                let mut bytes = Self::default();
+                bytes.copy_from_slice(&word);
+                bytes
             }
         }
     )*};

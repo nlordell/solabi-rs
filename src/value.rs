@@ -2,7 +2,8 @@
 
 use crate::{
     encode::{Encode, Encoder, Size},
-    types::{function::FunctionPtr, Primitive, Word},
+    function::FunctionPtr,
+    primitive::Word,
 };
 use ethaddr::Address;
 use ethnum::{I256, U256};
@@ -21,11 +22,11 @@ pub enum Value {
     Bool(bool),
     FixedBytes(FixedBytes),
     Function(FunctionPtr),
-    FixedArray(FixedArray),
+    FixedArray(Array),
     Bytes(Vec<u8>),
     String(String),
     Array(Array),
-    Tuple(Tuple),
+    Tuple(Vec<Value>),
 }
 
 impl Value {
@@ -44,41 +45,69 @@ impl Value {
             Self::Bytes(_) => ValueKind::Bytes,
             Self::String(_) => ValueKind::String,
             Self::Array(value) => ValueKind::Array(Box::new(value.element_kind().clone())),
-            Self::Tuple(value) => ValueKind::Tuple(value.field_kinds().collect()),
+            Self::Tuple(value) => ValueKind::Tuple(value.iter().map(|v| v.kind()).collect()),
         }
+    }
+
+    /// Encodes a `Value`.
+    ///
+    /// Note that `Value`s can't use the [`crate::encode`] method directly as
+    /// it would cause inconsistent behaviour. For example, `Vec<Value>` is not
+    /// always a valid Solidity type (which is why the [`Array`] abstraction
+    /// exists).
+    pub fn encode(&self) -> Vec<u8> {
+        crate::encode(Encodable(self))
     }
 }
 
-impl Encode for Value {
+/// Internal type for implementing encoding on [`Value`]s.
+struct Encodable<'a, T>(&'a T);
+
+impl Encode for Encodable<'_, Value> {
     fn size(&self) -> Size {
-        match self {
+        match self.0 {
             Value::Int(value) => value.size(),
             Value::Uint(value) => value.size(),
             Value::Address(value) => value.size(),
             Value::Bool(value) => value.size(),
-            Value::FixedBytes(value) => value.size(),
+            Value::FixedBytes(value) => value.1.size(),
             Value::Function(value) => value.size(),
-            Value::FixedArray(value) => value.size(),
             Value::Bytes(value) => value.size(),
             Value::String(value) => value.size(),
-            Value::Array(value) => value.size(),
-            Value::Tuple(value) => value.size(),
+            Value::Array(Array(_, values)) => {
+                Size::dynamic_array(values.iter().map(|item| Encodable(item).size()))
+            }
+            Value::FixedArray(Array(_, values)) | Value::Tuple(values) => {
+                Size::tuple(values.iter().map(|item| Encodable(item).size()))
+            }
         }
     }
 
     fn encode(&self, encoder: &mut Encoder) {
-        match self {
+        match self.0 {
             Value::Int(value) => value.encode(encoder),
             Value::Uint(value) => value.encode(encoder),
             Value::Address(value) => value.encode(encoder),
             Value::Bool(value) => value.encode(encoder),
-            Value::FixedBytes(value) => value.encode(encoder),
+            Value::FixedBytes(value) => value.1.encode(encoder),
             Value::Function(value) => value.encode(encoder),
-            Value::FixedArray(value) => value.encode(encoder),
             Value::Bytes(value) => value.encode(encoder),
             Value::String(value) => value.encode(encoder),
-            Value::Array(value) => value.encode(encoder),
-            Value::Tuple(value) => value.encode(encoder),
+            Value::Array(Array(_, values)) => {
+                // TODO(nlordell): Slight code-smell as we have duplicated this
+                // logic from `<&[T] as Encode>::encode`.
+                encoder.write(&values.len());
+                let inner_size = Size::tuple(values.iter().map(|item| Encodable(item).size()));
+                let mut inner = encoder.untail(inner_size);
+                for item in values {
+                    inner.write(&Encodable(item))
+                }
+            }
+            Value::FixedArray(Array(_, values)) | Value::Tuple(values) => {
+                for value in values {
+                    encoder.write(&Encodable(value))
+                }
+            }
         }
     }
 }
@@ -176,12 +205,6 @@ impl Deref for Int {
     }
 }
 
-impl Primitive for Int {
-    fn to_word(&self) -> Word {
-        self.1.to_word()
-    }
-}
-
 /// An unsigned integer with the specified width.
 ///
 /// This type is needed because there aren't Rust equivalents for all Solidity
@@ -212,12 +235,6 @@ impl Deref for Uint {
 
     fn deref(&self) -> &Self::Target {
         &self.1
-    }
-}
-
-impl Primitive for Uint {
-    fn to_word(&self) -> Word {
-        self.1.to_word()
     }
 }
 
@@ -276,58 +293,6 @@ impl Deref for FixedBytes {
     }
 }
 
-impl Primitive for FixedBytes {
-    fn to_word(&self) -> Word {
-        self.1
-    }
-}
-
-/// A fixed-sized array of values.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct FixedArray(ValueKind, Vec<Value>);
-
-impl FixedArray {
-    /// Creates a new fixed byte value.
-    pub fn new(values: Vec<Value>) -> Option<Self> {
-        let mut iter = values.iter();
-        let element_kind = iter.next()?.kind();
-        if iter.any(|value| value.kind() != element_kind) {
-            return None;
-        }
-        Some(Self(element_kind, values))
-    }
-
-    /// Creates an empty array.
-    pub fn empty(element_kind: ValueKind) -> Self {
-        Self(element_kind, Vec::new())
-    }
-
-    /// Returns the value kind of the array element.
-    pub fn element_kind(&self) -> &ValueKind {
-        &self.0
-    }
-}
-
-impl Deref for FixedArray {
-    type Target = [Value];
-
-    fn deref(&self) -> &Self::Target {
-        &self.1
-    }
-}
-
-impl Encode for FixedArray {
-    fn size(&self) -> Size {
-        Size::tuple(self.1.iter().map(|item| item.size()))
-    }
-
-    fn encode(&self, encoder: &mut Encoder) {
-        for item in &self.1 {
-            encoder.write(item)
-        }
-    }
-}
-
 /// An array of values.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Array(ValueKind, Vec<Value>);
@@ -362,50 +327,12 @@ impl Deref for Array {
     }
 }
 
-impl Encode for Array {
-    fn size(&self) -> Size {
-        self.1.size()
-    }
-
-    fn encode(&self, encoder: &mut Encoder) {
-        self.1.encode(encoder)
-    }
-}
-
-/// An tuple of values.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Tuple(Vec<Value>);
-
-impl Tuple {
-    /// Creates a new tuple value.
-    pub fn new(fields: Vec<Value>) -> Self {
-        Self(fields)
-    }
-
-    /// Returns the value kind of the array element.
-    pub fn field_kinds(&self) -> impl Iterator<Item = ValueKind> + '_ {
-        self.0.iter().map(|field| field.kind())
-    }
-}
-
-impl Deref for Tuple {
-    type Target = [Value];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Encode for Tuple {
-    fn size(&self) -> Size {
-        Size::tuple(self.0.iter().map(|item| item.size()))
-    }
-
-    fn encode(&self, encoder: &mut Encoder) {
-        for item in &self.0 {
-            encoder.write(item)
-        }
-    }
-}
+// TODO(nlordell): Implement these traits.
+//pub trait ToValue {
+//    fn to_value(&self) -> Value;
+//}
+//pub trait FromValue {
+//    fn from_value(&value: Value) -> Self;
+//}
 
 // TODO(nlordell): Test this madness.

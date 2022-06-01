@@ -1,6 +1,6 @@
 //! Solidity ABI decoding.
 
-use crate::types::Word;
+use crate::primitive::Word;
 
 /// Represents a decodable type.
 pub trait Decode: Sized {
