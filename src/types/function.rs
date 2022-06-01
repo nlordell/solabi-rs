@@ -1,6 +1,7 @@
 //! Solidity ABI function pointer type.
 
-use super::{address::Address, Primitive, Word};
+use super::{Primitive, Word};
+use ethaddr::Address;
 
 /// A function selector type.
 pub struct Selector(pub [u8; 4]);

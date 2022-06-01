@@ -1,6 +1,5 @@
 //! Solidity ABI specific types.
 
-pub mod address;
 pub mod bytes;
 pub mod function;
 pub mod integer;

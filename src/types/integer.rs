@@ -1,6 +1,7 @@
 //! Solidity primitive integer types.
 
 use super::{Primitive, Word};
+use ethaddr::Address;
 use ethnum::{AsU256, I256, U256};
 use std::ops::{Deref, Shl, Shr};
 
@@ -18,6 +19,14 @@ impl_primitive_for_as_u256! {
     i8, i16, i32, i64, i128, I256, isize,
     u8, u16, u32, u64, u128, U256, usize,
     bool,
+}
+
+impl Primitive for Address {
+    fn to_word(&self) -> Word {
+        let mut word = Word::default();
+        word[12..].copy_from_slice(&**self);
+        word
+    }
 }
 
 /// An signed integer with the specified width.

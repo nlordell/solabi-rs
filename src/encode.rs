@@ -361,6 +361,7 @@ impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S
 mod tests {
     use super::*;
     use crate::types::function::{FunctionPtr, Selector};
+    use ethaddr::address;
     use hex_literal::hex;
 
     #[test]
@@ -393,7 +394,10 @@ mod tests {
         );
 
         assert_eq!(
-            encode((324124, addr!("CD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"))),
+            encode((
+                324124,
+                address!("0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826")
+            )),
             hex!(
                 "000000000000000000000000000000000000000000000000000000000004f21c
                  000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"
@@ -413,7 +417,7 @@ mod tests {
                 -1,
                 Bytes(hex!("1babab")),
                 true,
-                addr!("fffffffffffffffffffffffffffffffffffffffb")
+                address!(~"0xfffffffffffffffffffffffffffffffffffffffb")
             )),
             hex!(
                 "000000000000000000000000000000000000000000000000000000000000000a
@@ -557,9 +561,9 @@ mod tests {
 
         assert_eq!(
             encode([
-                addr!("ffffffffffffffffffffffffffffffffffffffff"),
-                addr!("fffffffffffffffffffffffffffffffffffffffe"),
-                addr!("fffffffffffffffffffffffffffffffffffffffd"),
+                address!(~"0xffffffffffffffffffffffffffffffffffffffff"),
+                address!(~"0xfffffffffffffffffffffffffffffffffffffffe"),
+                address!(~"0xfffffffffffffffffffffffffffffffffffffffd"),
             ]),
             hex!(
                 "000000000000000000000000ffffffffffffffffffffffffffffffffffffffff
@@ -570,9 +574,9 @@ mod tests {
 
         assert_eq!(
             encode((vec![
-                addr!("0000000000000000000000000000000000000001"),
-                addr!("0000000000000000000000000000000000000002"),
-                addr!("0000000000000000000000000000000000000003"),
+                address!("0x0000000000000000000000000000000000000001"),
+                address!("0x0000000000000000000000000000000000000002"),
+                address!("0x0000000000000000000000000000000000000003"),
             ],)),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000020
@@ -602,11 +606,11 @@ mod tests {
         assert_eq!(
             encode((
                 FunctionPtr {
-                    address: addr!("001c08ab857afe5a9633887e7a4e2a429d1d8d42"),
+                    address: address!("0x001C08AB857afe5A9633887e7A4e2A429D1d8D42"),
                     selector: Selector(hex!("b3de648b")),
                 },
                 FunctionPtr {
-                    address: addr!("001c08ab857afe5a9633887e7a4e2a429d1d8d42"),
+                    address: address!("0x001C08AB857afe5A9633887e7A4e2A429D1d8D42"),
                     selector: Selector(hex!("b3de648b")),
                 },
             )),
@@ -619,11 +623,11 @@ mod tests {
         assert_eq!(
             encode((
                 FunctionPtr {
-                    address: addr!("ffffffffffffffffffffffffffffffffffffffff"),
+                    address: address!(~"0xffffffffffffffffffffffffffffffffffffffff"),
                     selector: Selector(hex!("ffffffff")),
                 },
                 FunctionPtr {
-                    address: addr!("ffffffffffffffffffffffffffffffffffffffff"),
+                    address: address!(~"0xffffffffffffffffffffffffffffffffffffffff"),
                     selector: Selector(hex!("ffffffff")),
                 },
             )),
@@ -691,7 +695,7 @@ mod tests {
                 7,
                 [
                     (
-                        addr!("1111111111111111111111111111111111111111"),
+                        address!("0x1111111111111111111111111111111111111111"),
                         vec![(0x11, 1, 0x12)],
                     ),
                     Default::default(),
@@ -699,7 +703,7 @@ mod tests {
                 vec![
                     Default::default(),
                     (
-                        addr!("0000000000000000000000000000000000001234"),
+                        address!("0x0000000000000000000000000000000000001234"),
                         vec![(0, 0, 0), (0x21, 2, 0x22), (0, 0, 0)]
                     ),
                 ],
@@ -835,7 +839,7 @@ mod tests {
                 false,
                 -5,
                 FunctionPtr {
-                    address: addr!("903d3a9a4266eb4432407ea5b1b4f80094f17957"),
+                    address: address!("0x903D3a9A4266EB4432407ea5B1B4f80094f17957"),
                     selector: Selector(hex!("e2179b8e")),
                 },
                 Bytes(hex!("010203")),
