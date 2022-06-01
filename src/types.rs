@@ -3,7 +3,6 @@
 pub mod bytes;
 pub mod function;
 pub mod integer;
-pub mod value;
 
 /// An Ethereum 32-byte word.
 pub type Word = [u8; 32];

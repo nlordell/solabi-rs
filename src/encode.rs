@@ -9,6 +9,11 @@ pub trait Encode {
     fn size(&self) -> Size;
 
     /// Writes the type's data to the specified encoder.
+    ///
+    /// # Notes
+    ///
+    /// Encoding values that do not match what is returned by [`Encode::size`]
+    /// may cause the encoding to panic.
     fn encode(&self, encoder: &mut Encoder);
 }
 

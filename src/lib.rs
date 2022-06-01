@@ -3,6 +3,9 @@
 pub mod decode;
 pub mod encode;
 pub mod types;
+pub mod value;
+
+pub use self::{decode::decode, encode::encode};
 
 #[cfg(test)]
 mod tests {

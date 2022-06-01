@@ -4,6 +4,7 @@ use super::{Primitive, Word};
 use ethaddr::Address;
 
 /// A function selector type.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Selector(pub [u8; 4]);
 
 impl AsRef<[u8]> for Selector {
@@ -14,6 +15,7 @@ impl AsRef<[u8]> for Selector {
 
 /// Recent Solidity ABI version support function pointers. They are encoded as
 /// a contract address and a selector packed into a `bytes24`.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct FunctionPtr {
     /// The contract address that will be used when calling this function
     /// pointer.
