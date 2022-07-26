@@ -1,7 +1,7 @@
 //! Solidity primitive type trait and implementations.
 
 use ethaddr::Address;
-use ethnum::{AsU256 as _, I256, U256};
+use ethnum::{AsI256 as _, I256, U256};
 
 /// An Ethereum 32-byte word.
 pub type Word = [u8; 32];
@@ -21,24 +21,55 @@ pub trait Primitive {
     fn cast(word: Word) -> Self;
 }
 
-macro_rules! impl_primitive_for_as_u256 {
+macro_rules! impl_primitive_for_i256 {
     ($($t:ty,)*) => {$(
         impl Primitive for $t {
             fn to_word(&self) -> Word {
-                self.as_u256().to_be_bytes()
+                self.to_be_bytes()
             }
 
-            fn cast(_: Word) -> Self {
-                todo!()
+            fn cast(word: Word) -> Self {
+                Self::from_be_bytes(word)
             }
         }
     )*};
 }
 
-impl_primitive_for_as_u256! {
-    i8, i16, i32, i64, i128, I256, isize,
-    u8, u16, u32, u64, u128, U256, usize,
-    bool,
+impl_primitive_for_i256! {
+    I256,
+    U256,
+}
+
+macro_rules! impl_primitive_for_integer {
+    ($($t:ty,)*) => {$(
+        impl Primitive for $t {
+            fn to_word(&self) -> Word {
+                self.as_i256().to_word()
+            }
+
+            fn cast(word: Word) -> Self {
+                *I256::cast(word).low() as _
+            }
+        }
+    )*};
+}
+
+impl_primitive_for_integer! {
+    i8, i16, i32, i64, i128, isize,
+    u8, u16, u32, u64, u128, usize,
+}
+
+impl Primitive for bool {
+    fn to_word(&self) -> Word {
+        [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, *self as _,
+        ]
+    }
+
+    fn cast(word: Word) -> Self {
+        word != [0; 32]
+    }
 }
 
 impl Primitive for Address {

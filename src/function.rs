@@ -1,4 +1,6 @@
 //! Solidity ABI function pointer type.
+//!
+//! TODO(nlordell): Statically typed function signatures.
 
 use crate::primitive::{Primitive, Word};
 use ethaddr::Address;
@@ -16,7 +18,7 @@ impl AsRef<[u8]> for Selector {
 /// Recent Solidity ABI version support function pointers. They are encoded as
 /// a contract address and a selector packed into a `bytes24`.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct FunctionPtr {
+pub struct ExternalFunction {
     /// The contract address that will be used when calling this function
     /// pointer.
     pub address: Address,
@@ -24,7 +26,7 @@ pub struct FunctionPtr {
     pub selector: Selector,
 }
 
-impl Primitive for FunctionPtr {
+impl Primitive for ExternalFunction {
     fn to_word(&self) -> Word {
         let mut word = Word::default();
         word[..20].copy_from_slice(self.address.as_ref());
