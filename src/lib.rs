@@ -51,13 +51,13 @@ mod tests {
     fn ethereum_basic_abi_tests() {
         // <https://github.com/ethereum/tests/blob/0e8d25bb613cab7f9e99430f970e1e6cbffdbf1a/ABITests/basic_abi_tests.json>
 
-        assert_eq!(
-            encode((
+        assert_encoding!(
+            (
                 291_i32,
-                &[1110_i32, 1929_i32][..],
+                vec![1110_i32, 1929_i32],
                 Bytes(*b"1234567890"),
-                "Hello, world!"
-            )),
+                "Hello, world!".to_owned(),
+            ),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000123
                  0000000000000000000000000000000000000000000000000000000000000080
@@ -71,16 +71,16 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode(98127491),
+        assert_encoding!(
+            98127491_i32,
             hex!("0000000000000000000000000000000000000000000000000000000005d94e83"),
         );
 
-        assert_eq!(
-            encode((
-                324124,
+        assert_encoding!(
+            (
+                324124_i32,
                 address!("0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826")
-            )),
+            ),
             hex!(
                 "000000000000000000000000000000000000000000000000000000000004f21c
                  000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"

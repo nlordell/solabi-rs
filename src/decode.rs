@@ -11,6 +11,9 @@ use std::{
 
 /// Represents a decodable type.
 pub trait Decode: Sized {
+    /// Returns `true` if the type is dynamic.
+    fn is_dynamic() -> bool;
+
     /// Writes the type's data to the specified encoder.
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError>;
 }
@@ -85,7 +88,11 @@ impl<'a> Decoder<'a> {
     where
         T: Decode,
     {
-        T::decode(self)
+        if T::is_dynamic() {
+            T::decode(&mut self.slice()?)
+        } else {
+            T::decode(self)
+        }
     }
 }
 
@@ -122,6 +129,10 @@ impl<T> Decode for T
 where
     T: Primitive,
 {
+    fn is_dynamic() -> bool {
+        false
+    }
+
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
         Ok(T::cast(decoder.read_word()?))
     }
@@ -131,6 +142,10 @@ impl<T, const N: usize> Decode for [T; N]
 where
     T: Decode,
 {
+    fn is_dynamic() -> bool {
+        T::is_dynamic()
+    }
+
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
         // SAFETY: Copy of the unstable standard library implementation of
         // `MaybeUninit::uninit_array()`.
@@ -157,6 +172,10 @@ impl<T> Decode for Vec<T>
 where
     T: Decode,
 {
+    fn is_dynamic() -> bool {
+        true
+    }
+
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
         let len = decoder.read_size()?;
         let mut result = Vec::with_capacity(len);
@@ -169,6 +188,10 @@ where
 }
 
 impl Decode for String {
+    fn is_dynamic() -> bool {
+        true
+    }
+
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
         let len = decoder.read_size()?;
         Ok(str::from_utf8(decoder.read_bytes(len)?)
@@ -184,6 +207,10 @@ macro_rules! impl_decode_for_tuple {
         where
             $($t: Decode,)*
         {
+            fn is_dynamic() -> bool {
+                false $(|| $t::is_dynamic())*
+            }
+
             fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
                 $(let $t = decoder.read()?;)*
                 Ok(($($t,)*))

@@ -54,7 +54,7 @@ macro_rules! impl_primitive_for_fixed_bytes {
 
             fn cast(word: Word) -> Self {
                 let mut bytes = Self::default();
-                bytes.copy_from_slice(&word);
+                bytes.copy_from_slice(&word[..$n]);
                 bytes
             }
         }
@@ -89,6 +89,10 @@ impl Encode for Bytes<Vec<u8>> {
 }
 
 impl Decode for Bytes<Vec<u8>> {
+    fn is_dynamic() -> bool {
+        true
+    }
+
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
         let len = decoder.read_size()?;
         Ok(Self(decoder.read_bytes(len)?.to_owned()))
