@@ -1,6 +1,7 @@
 //! Solidity bytes type.
 
 use crate::{
+    decode::{Decode, DecodeError, Decoder},
     encode::{Encode, Encoder, Size},
     primitive::{Primitive, Word},
 };
@@ -84,5 +85,12 @@ impl Encode for Bytes<Vec<u8>> {
 
     fn encode(&self, encoder: &mut Encoder) {
         Bytes(&self[..]).encode(encoder)
+    }
+}
+
+impl Decode for Bytes<Vec<u8>> {
+    fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
+        let len = decoder.read_size()?;
+        Ok(Self(decoder.read_bytes(len)?.to_owned()))
     }
 }
