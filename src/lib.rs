@@ -48,6 +48,26 @@ mod tests {
     }
 
     #[test]
+    fn root_has_no_jump() {
+        assert_encoding!(
+            ("hello".to_owned(),),
+            hex!(
+                "0000000000000000000000000000000000000000000000000000000000000020
+                 0000000000000000000000000000000000000000000000000000000000000005
+                 68656c6c6f000000000000000000000000000000000000000000000000000000"
+            ),
+        );
+
+        assert_encoding!(
+            "hello".to_owned(),
+            hex!(
+                "0000000000000000000000000000000000000000000000000000000000000005
+                 68656c6c6f000000000000000000000000000000000000000000000000000000"
+            ),
+        );
+    }
+
+    #[test]
     fn ethereum_basic_abi_tests() {
         // <https://github.com/ethereum/tests/blob/0e8d25bb613cab7f9e99430f970e1e6cbffdbf1a/ABITests/basic_abi_tests.json>
 
@@ -92,16 +112,16 @@ mod tests {
     fn solidity_abi_encoder_tests() {
         // <https://github.com/ethereum/solidity/blob/43f29c00da02e19ff10d43f7eb6955d627c57728/test/libsolidity/ABIEncoderTests.cpp>
 
-        assert_eq!(
-            encode((
-                10,
+        assert_encoding!(
+            (
+                10_i32,
                 u16::MAX - 1,
-                0x121212,
-                -1,
+                0x121212_i32,
+                -1_i32,
                 Bytes(hex!("1babab")),
                 true,
                 address!(~"0xfffffffffffffffffffffffffffffffffffffffb")
-            )),
+            ),
             hex!(
                 "000000000000000000000000000000000000000000000000000000000000000a
                  000000000000000000000000000000000000000000000000000000000000fffe
@@ -113,14 +133,15 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((
-                "abcdef",
+        assert_encoding!(
+            (
+                "abcdef".to_owned(),
                 Bytes(*b"abcde\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
                 "abcdefabcdefgehabcabcasdfjklabcdefabcedefghabcabcasdfjklabcdefab\
                  cdefghabcabcasdfjklabcdeefabcdefghabcabcasdefjklabcdefabcdefghab\
-                 cabcasdfjkl",
-            )),
+                 cabcasdfjkl"
+                    .to_owned(),
+            ),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000060
                  6162636465000000000000000000000000000000000000000000000000000000
@@ -136,28 +157,28 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode(0_u8),
+        assert_encoding!(
+            0_u8,
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
         );
-        assert_eq!(
-            encode(1_u8),
+        assert_encoding!(
+            1_u8,
             hex!("0000000000000000000000000000000000000000000000000000000000000001"),
         );
-        assert_eq!(
-            encode(2_u8),
+        assert_encoding!(
+            2_u8,
             hex!("0000000000000000000000000000000000000000000000000000000000000002"),
         );
 
-        assert_eq!(
-            encode((
+        assert_encoding!(
+            (
                 Bytes([0_u8, 0, 0, 10]),
                 Bytes(hex!("f1f20000")),
-                0xff,
-                0xff,
-                -1,
-                1,
-            )),
+                0xff_u8,
+                0xff_u8,
+                -1_i8,
+                1_i8,
+            ),
             hex!(
                 "0000000a00000000000000000000000000000000000000000000000000000000
                  f1f2000000000000000000000000000000000000000000000000000000000000
@@ -168,8 +189,12 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((10, vec![0xfffffffe_u64, 0xffffffff, 0x100000000], 11)),
+        assert_encoding!(
+            (
+                10_i32,
+                vec![0xfffffffe_u64, 0xffffffff, 0x100000000],
+                11_i32
+            ),
             hex!(
                 "000000000000000000000000000000000000000000000000000000000000000a
                  0000000000000000000000000000000000000000000000000000000000000060
@@ -181,8 +206,8 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((10, [vec![7_i16, 0x0506, -1], vec![4, 5]], 11)),
+        assert_encoding!(
+            (10_i32, [vec![7_i16, 0x0506, -1], vec![4, 5]], 11_i32),
             hex!(
                 "000000000000000000000000000000000000000000000000000000000000000a
                  0000000000000000000000000000000000000000000000000000000000000060
@@ -199,15 +224,15 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((
-                10,
+        assert_encoding!(
+            (
+                10_i32,
                 vec![
-                    "abcabcdefghjklmnopqrsuvwabcdefgijklmnopqrstuwabcdefgijklmnoprstuvw",
-                    "abcdefghijklmnopqrtuvwabcfghijklmnopqstuvwabcdeghijklmopqrstuvw",
+                    "abcabcdefghjklmnopqrsuvwabcdefgijklmnopqrstuwabcdefgijklmnoprstuvw".to_owned(),
+                    "abcdefghijklmnopqrtuvwabcfghijklmnopqstuvwabcdeghijklmopqrstuvw".to_owned(),
                 ],
-                11
-            )),
+                11_i32,
+            ),
             hex!(
                 "000000000000000000000000000000000000000000000000000000000000000a
                  0000000000000000000000000000000000000000000000000000000000000060
@@ -225,11 +250,12 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((
-                "123456789012345678901234567890a",
-                "ffff123456789012345678901234567890afffffffff123456789012345678901234567890a",
-            )),
+        assert_encoding!(
+            (
+                "123456789012345678901234567890a".to_owned(),
+                "ffff123456789012345678901234567890afffffffff123456789012345678901234567890a"
+                    .to_owned(),
+            ),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000040
                  0000000000000000000000000000000000000000000000000000000000000080
@@ -242,12 +268,12 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode([
+        assert_encoding!(
+            [
                 address!(~"0xffffffffffffffffffffffffffffffffffffffff"),
                 address!(~"0xfffffffffffffffffffffffffffffffffffffffe"),
                 address!(~"0xfffffffffffffffffffffffffffffffffffffffd"),
-            ]),
+            ],
             hex!(
                 "000000000000000000000000ffffffffffffffffffffffffffffffffffffffff
                  000000000000000000000000fffffffffffffffffffffffffffffffffffffffe
@@ -255,12 +281,12 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((vec![
+        assert_encoding!(
+            (vec![
                 address!("0x0000000000000000000000000000000000000001"),
                 address!("0x0000000000000000000000000000000000000002"),
                 address!("0x0000000000000000000000000000000000000003"),
-            ],)),
+            ],),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000020
                  0000000000000000000000000000000000000000000000000000000000000003
@@ -270,8 +296,8 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((vec![-1, 2, -3, 4, -5, 6, -7, 8,],)),
+        assert_encoding!(
+            (vec![-1_i32, 2, -3, 4, -5, 6, -7, 8],),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000020
                  0000000000000000000000000000000000000000000000000000000000000008
@@ -286,8 +312,8 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((
+        assert_encoding!(
+            (
                 ExternalFunction {
                     address: address!("0x001C08AB857afe5A9633887e7A4e2A429D1d8D42"),
                     selector: Selector(hex!("b3de648b")),
@@ -296,15 +322,15 @@ mod tests {
                     address: address!("0x001C08AB857afe5A9633887e7A4e2A429D1d8D42"),
                     selector: Selector(hex!("b3de648b")),
                 },
-            )),
+            ),
             hex!(
                 "001c08ab857afe5a9633887e7a4e2a429d1d8d42b3de648b0000000000000000
                  001c08ab857afe5a9633887e7a4e2a429d1d8d42b3de648b0000000000000000"
             ),
         );
 
-        assert_eq!(
-            encode((
+        assert_encoding!(
+            (
                 ExternalFunction {
                     address: address!(~"0xffffffffffffffffffffffffffffffffffffffff"),
                     selector: Selector(hex!("ffffffff")),
@@ -313,25 +339,26 @@ mod tests {
                     address: address!(~"0xffffffffffffffffffffffffffffffffffffffff"),
                     selector: Selector(hex!("ffffffff")),
                 },
-            )),
+            ),
             hex!(
                 "ffffffffffffffffffffffffffffffffffffffffffffffff0000000000000000
                  ffffffffffffffffffffffffffffffffffffffffffffffff0000000000000000"
             ),
         );
 
-        assert_eq!(
-            encode(("abcdef",)),
+        assert_encoding!(
+            ("abcdef".to_owned(),),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000020
                  0000000000000000000000000000000000000000000000000000000000000006
                  6162636465660000000000000000000000000000000000000000000000000000"
             ),
         );
-        assert_eq!(
-            encode((
-                "abcdefgggggggggggggggggggggggggggggggggggggggghhheeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-            )),
+        assert_encoding!(
+            (
+                "abcdefgggggggggggggggggggggggggggggggggggggggghhheeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                    .to_owned(),
+            ),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000020
                  000000000000000000000000000000000000000000000000000000000000004f
@@ -341,21 +368,29 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode(0),
+        assert_encoding!(
+            0_i32,
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
         );
-        assert_eq!(
-            encode(1),
+        assert_encoding!(
+            1_i32,
             hex!("0000000000000000000000000000000000000000000000000000000000000001"),
         );
-        assert_eq!(
-            encode(7),
+        assert_encoding!(
+            7_i32,
             hex!("0000000000000000000000000000000000000000000000000000000000000007"),
         );
 
-        assert_eq!(
-            encode((7, (8, 9, vec![(11, 0), (12, 0), (0, 13),], 10))),
+        assert_encoding!(
+            (
+                7_i32,
+                (
+                    8_i32,
+                    9_i32,
+                    vec![(11_i32, 0_i32), (12, 0), (0, 13)],
+                    10_i32,
+                ),
+            ),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000007
                  0000000000000000000000000000000000000000000000000000000000000040
@@ -373,13 +408,13 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode((
-                7,
+        assert_encoding!(
+            (
+                7_i32,
                 [
                     (
                         address!("0x1111111111111111111111111111111111111111"),
-                        vec![(0x11, 1, 0x12)],
+                        vec![(0x11_i32, 1_i32, 0x12_i32)],
                     ),
                     Default::default(),
                 ],
@@ -387,11 +422,11 @@ mod tests {
                     Default::default(),
                     (
                         address!("0x0000000000000000000000000000000000001234"),
-                        vec![(0, 0, 0), (0x21, 2, 0x22), (0, 0, 0)]
+                        vec![(0_i32, 0_i32, 0_i32), (0x21, 2, 0x22), (0, 0, 0)]
                     ),
                 ],
-                8,
-            )),
+                8_i32,
+            ),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000007
                  0000000000000000000000000000000000000000000000000000000000000080
@@ -429,9 +464,9 @@ mod tests {
             ),
         );
 
-        assert_eq!(encode(()), hex!(""));
-        assert_eq!(
-            encode((vec![true, false, true, false], [true, false, true, false])),
+        assert_encoding!((), hex!(""));
+        assert_encoding!(
+            (vec![true, false, true, false], [true, false, true, false]),
             hex!(
                 "00000000000000000000000000000000000000000000000000000000000000a0
                  0000000000000000000000000000000000000000000000000000000000000001
@@ -468,7 +503,7 @@ mod tests {
                 buffer.extend_from_slice(&Bytes(*b"abc").to_word());
                 buffer.extend_from_slice(&Bytes(*b"def").to_word());
 
-                assert_eq!(encode((vec![Bytes(*b"abc"), Bytes(*b"def")], y)), buffer);
+                assert_encoding!((vec![Bytes(*b"abc"), Bytes(*b"def")], y), buffer);
             }};
 
             // Cartesian product of `$t * $n`
@@ -510,24 +545,24 @@ mod tests {
                     buffer.extend_from_slice(&Bytes(*b"abc").to_word());
                     buffer.extend_from_slice(&Bytes(*b"def").to_word());
 
-                    assert_eq!(encode((&y[..], vec![Bytes(*b"abc"), Bytes(*b"def")])), buffer);
+                    assert_encoding!((y, vec![Bytes(*b"abc"), Bytes(*b"def")]), buffer);
                 }
             })*};
         }
 
         bytes_nn_arrays_dyn!([1..15] {1, 2, 4, 5, 7, 15, 16, 17, 31, 32});
 
-        assert_eq!(
-            encode((
+        assert_encoding!(
+            (
                 false,
-                -5,
+                -5_i32,
                 ExternalFunction {
                     address: address!("0x903D3a9A4266EB4432407ea5B1B4f80094f17957"),
                     selector: Selector(hex!("e2179b8e")),
                 },
                 Bytes(hex!("010203")),
-                -3,
-            )),
+                -3_i32,
+            ),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000000
                  fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb
@@ -537,8 +572,8 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode(("", 3, "")),
+        assert_encoding!(
+            ("".to_owned(), 3_i32, "".to_owned()),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000060
                  0000000000000000000000000000000000000000000000000000000000000003
@@ -548,8 +583,8 @@ mod tests {
             ),
         );
 
-        assert_eq!(
-            encode(("abc", 7, "def")),
+        assert_encoding!(
+            ("abc".to_owned(), 7_i32, "def".to_owned()),
             hex!(
                 "0000000000000000000000000000000000000000000000000000000000000060
                  0000000000000000000000000000000000000000000000000000000000000007
