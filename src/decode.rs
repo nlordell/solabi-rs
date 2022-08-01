@@ -153,15 +153,23 @@ where
         // `MaybeUninit::uninit_array()`.
         let mut result: [MaybeUninit<T>; N] = unsafe { MaybeUninit::uninit().assume_init() };
 
-        for element in result.iter_mut() {
-            element.write(decoder.read()?);
+        if let Err((written, err)) =
+            result
+                .iter_mut()
+                .enumerate()
+                .try_fold((), |_, (i, element)| {
+                    element.write(decoder.read().map_err(|err| (i, err))?);
+                    Ok(())
+                })
+        {
+            for element in result[..written].iter_mut() {
+                // SAFETY: In case of error, we need to ensure that we drop the
+                // initialized elements from the partially initialized array. We
+                // do this for all elements that successfully decoded.
+                unsafe { element.assume_init_drop() }
+            }
+            return Err(err);
         }
-
-        // TODO(nlordell): Call drop when encountering an error while decoding
-        // for values that were successfully decoded. Otherwise, if decoding
-        // something like `uint256[][2]` (i.e. fixed array of dynamic arrays),
-        // we will leak memory if the first dynamic array is read correctly and
-        // the second one fails to read. WRITE A TEST FOR THIS.
 
         // SAFETY: Copy of the unstable standard library implementation of
         // `MaybeUninit::array_assume_init()` noting that `Decode` is not
@@ -254,3 +262,44 @@ impl_decode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S
 impl_decode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD }
 impl_decode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE }
 impl_decode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hex_literal::hex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn drops_partially_initialized_array() {
+        struct D;
+
+        impl Decode for D {
+            fn is_dynamic() -> bool {
+                false
+            }
+
+            fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
+                if decoder.read()? {
+                    Ok(Self)
+                } else {
+                    Err(DecodeError::InvalidData)
+                }
+            }
+        }
+
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+        impl Drop for D {
+            fn drop(&mut self) {
+                DROPS.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        assert!(decode::<[D; 2]>(&hex!(
+            "0000000000000000000000000000000000000000000000000000000000000001
+             0000000000000000000000000000000000000000000000000000000000000000"
+        ))
+        .is_err());
+        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+    }
+}

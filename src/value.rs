@@ -231,16 +231,6 @@ pub enum ValueKind {
     Tuple(Vec<ValueKind>),
 }
 
-impl ValueKind {
-    /// Decodes a `Value` of the specified kind.
-    ///
-    /// Note that `Value`s can't use the [`crate::decode`] method directly as
-    /// value type information is important when decoding.
-    pub fn decode(&self) -> Result<Value, DecodeError> {
-        todo!()
-    }
-}
-
 impl Display for ValueKind {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
