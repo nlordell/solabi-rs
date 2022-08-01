@@ -1,7 +1,10 @@
 //! Module containing dynamic Solidity value.
 
 use crate::{
-    decode::DecodeError,
+    decode::{
+        context::{self, DecodeContext},
+        DecodeError, Decoder,
+    },
     encode::{Encode, Encoder, Size},
     function::ExternalFunction,
     primitive::Word,
@@ -79,12 +82,20 @@ impl Value {
     pub fn encode(&self) -> Vec<u8> {
         crate::encode(Encodable(self))
     }
+
+    /// Decodes a `Value`.
+    ///
+    /// Note that `Value`s can't use the [`crate::decode`] method directly as
+    /// it requires runtime type information for proper decoding.
+    pub fn decode(kind: &ValueKind, bytes: &[u8]) -> Result<Self, DecodeError> {
+        Ok(context::decode::<Decodable>(bytes, kind)?.0)
+    }
 }
 
 /// Internal type for implementing encoding on [`Value`]s.
-struct Encodable<'a, T>(&'a T);
+struct Encodable<'a>(&'a Value);
 
-impl Encode for Encodable<'_, Value> {
+impl Encode for Encodable<'_> {
     fn size(&self) -> Size {
         match self.0 {
             Value::Int(value) => value.size(),
@@ -130,6 +141,66 @@ impl Encode for Encodable<'_, Value> {
                 }
             }
         }
+    }
+}
+
+/// Internal type for implementing decoding on [`Value`]s.
+struct Decodable(Value);
+
+impl DecodeContext for Decodable {
+    type Context = ValueKind;
+
+    fn is_dynamic_context(context: &Self::Context) -> bool {
+        match context {
+            ValueKind::Int(_)
+            | ValueKind::Uint(_)
+            | ValueKind::Address
+            | ValueKind::Bool
+            | ValueKind::FixedBytes(_)
+            | ValueKind::Function => false,
+            ValueKind::FixedArray(_, element) => Self::is_dynamic_context(element),
+            ValueKind::Bytes | ValueKind::String | ValueKind::Array(_) => true,
+            ValueKind::Tuple(elements) => elements.iter().any(Self::is_dynamic_context),
+        }
+    }
+
+    fn decode_context(decoder: &mut Decoder, context: &Self::Context) -> Result<Self, DecodeError> {
+        let value = match context {
+            ValueKind::Int(bit_width) => Value::Int(Int(*bit_width, decoder.read()?)),
+            ValueKind::Uint(bit_width) => Value::Uint(Uint(*bit_width, decoder.read()?)),
+            ValueKind::Address => Value::Address(decoder.read()?),
+            ValueKind::Bool => Value::Bool(decoder.read()?),
+            ValueKind::FixedBytes(byte_length) => {
+                Value::FixedBytes(FixedBytes(*byte_length, decoder.read()?))
+            }
+            ValueKind::Function => Value::Function(decoder.read()?),
+            ValueKind::FixedArray(len, element) => Value::FixedArray(Array(
+                (**element).clone(),
+                (0..*len)
+                    .map(|_| Ok(decoder.read_context::<Decodable>(element)?.0))
+                    .collect::<Result<_, _>>()?,
+            )),
+            ValueKind::Bytes => Value::Bytes(decoder.read()?),
+            ValueKind::String => Value::String(decoder.read()?),
+            ValueKind::Array(element) => {
+                let len = decoder.read_size()?;
+                let mut decoder = decoder.anchor();
+                Value::Array(Array(
+                    (**element).clone(),
+                    (0..len)
+                        .map(|_| Ok(decoder.read_context::<Decodable>(element)?.0))
+                        .collect::<Result<_, _>>()?,
+                ))
+            }
+            ValueKind::Tuple(elements) => Value::Tuple(
+                elements
+                    .iter()
+                    .map(|element| Ok(decoder.read_context::<Decodable>(element)?.0))
+                    .collect::<Result<_, _>>()?,
+            ),
+        };
+
+        Ok(Self(value))
     }
 }
 

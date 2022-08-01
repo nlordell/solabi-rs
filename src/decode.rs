@@ -1,5 +1,7 @@
 //! Solidity ABI decoding.
 
+pub mod context;
+
 use crate::primitive::{Primitive, Word};
 use ethnum::U256;
 use std::{
