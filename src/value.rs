@@ -126,8 +126,6 @@ impl Encode for Encodable<'_> {
             Value::Bytes(value) => value.encode(encoder),
             Value::String(value) => value.encode(encoder),
             Value::Array(Array(_, values)) => {
-                // TODO(nlordell): Slight code-smell as we have duplicated this
-                // logic from `<&[T] as Encode>::encode`.
                 encoder.write(&values.len());
                 let inner_size = Size::tuple(values.iter().map(|item| Encodable(item).size()));
                 let mut inner = encoder.untail(inner_size);
@@ -307,11 +305,6 @@ impl FromStr for ValueKind {
                 .and_then(ByteLength::new)
                 .ok_or(ParseValueKindError::InvalidByteLength)?;
             return Ok(Self::FixedBytes(len));
-        }
-
-        if let Some(_signature) = s.strip_prefix("function") {
-            // TODO(nlordell): function with signature!
-            return Err(ParseValueKindError::FunctionSignature);
         }
 
         if let Some(mut ss) = s.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
