@@ -58,24 +58,6 @@ impl Primitive for ExternalFunction {
     }
 }
 
-/// A trait representing an encodable ABI function.
-pub trait FunctionEncoding {
-    /// The function parameters type.
-    type Params;
-    /// The function return type.
-    type Returns;
-
-    /// Encodes a function call for the specified parameters.
-    fn encode(&self, params: &Self::Params) -> Vec<u8>;
-    /// Decodes function return data.
-    fn decode(&self, data: &[u8]) -> Result<Self::Returns, DecodeError>;
-
-    /// Decodes a function call into its parameters.
-    fn decode_params(&self, data: &[u8]) -> Result<Self::Params, DecodeError>;
-    /// Encodes function return data.
-    fn encode_returns(&self, params: &Self::Returns) -> Vec<u8>;
-}
-
 /// A typed function encoder.
 pub struct FunctionEncoder<P, R> {
     /// The function selector.
@@ -95,6 +77,26 @@ where
             _marker: PhantomData,
         }
     }
+
+    /// Encodes a function call for the specified parameters.
+    pub fn encode_params(&self, params: &P) -> Vec<u8> {
+        crate::encode_with_selector(self.selector, params)
+    }
+
+    /// Decodes a function call into its parameters.
+    pub fn decode_params(&self, data: &[u8]) -> Result<P, DecodeError> {
+        crate::decode_with_selector(self.selector, data)
+    }
+
+    /// Encodes function return data.
+    pub fn encode_returns(&self, returns: &R) -> Vec<u8> {
+        crate::encode(returns)
+    }
+
+    /// Decodes function return data.
+    pub fn decode_returns(&self, data: &[u8]) -> Result<R, DecodeError> {
+        crate::decode(data)
+    }
 }
 
 impl<I, D> Debug for FunctionEncoder<I, D> {
@@ -102,31 +104,6 @@ impl<I, D> Debug for FunctionEncoder<I, D> {
         f.debug_struct("FunctionEncoder")
             .field("selector", &Hex(self.selector.as_ref()))
             .finish()
-    }
-}
-
-impl<P, R> FunctionEncoding for FunctionEncoder<P, R>
-where
-    P: Encode + Decode,
-    R: Encode + Decode,
-{
-    type Params = P;
-    type Returns = R;
-
-    fn encode(&self, params: &Self::Params) -> Vec<u8> {
-        crate::encode_with_selector(self.selector, params)
-    }
-
-    fn decode(&self, data: &[u8]) -> Result<Self::Returns, DecodeError> {
-        crate::decode(data)
-    }
-
-    fn decode_params(&self, data: &[u8]) -> Result<Self::Params, DecodeError> {
-        crate::decode_with_selector(self.selector, data)
-    }
-
-    fn encode_returns(&self, returns: &Self::Returns) -> Vec<u8> {
-        crate::encode(returns)
     }
 }
 
@@ -150,15 +127,15 @@ mod tests {
              0000000000000000000000000000000000000000000000003a4965bf58a40000"
         );
 
-        assert_eq!(transfer.encode(&(to, value)), call);
+        assert_eq!(transfer.encode_params(&(to, value)), call);
         assert_eq!(transfer.decode_params(&call).unwrap(), (to, value));
 
         let success = true;
 
         let ret = hex!("0000000000000000000000000000000000000000000000000000000000000001");
 
-        assert_eq!(transfer.decode(&ret).unwrap(), (success,));
         assert_eq!(transfer.encode_returns(&(success,)), ret);
+        assert_eq!(transfer.decode_returns(&ret).unwrap(), (success,));
     }
 
     #[test]
@@ -166,11 +143,10 @@ mod tests {
         let selector = [0; 4];
         let unit = FunctionEncoder::<(), ()>::new(selector);
 
-        assert_eq!(unit.encode(&()), selector);
+        assert_eq!(unit.encode_params(&()), selector);
         assert!(unit.decode_params(&selector).is_ok());
-
-        assert!(unit.decode(&[]).is_ok());
         assert_eq!(unit.encode_returns(&()), []);
+        assert!(unit.decode_returns(&[]).is_ok());
     }
 
     #[test]

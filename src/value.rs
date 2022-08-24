@@ -5,8 +5,8 @@ use crate::{
         context::{self, DecodeContext},
         DecodeError, Decoder,
     },
-    encode::{Encode, Encoder, Size},
-    function::ExternalFunction,
+    encode::{BufferSizeError, Encode, Encoder, Size},
+    function::{ExternalFunction, Selector},
     primitive::Word,
 };
 use ethaddr::Address;
@@ -83,12 +83,40 @@ impl Value {
         crate::encode(&Encodable(self))
     }
 
+    /// Encodes a `Value` with a function selector.
+    ///
+    /// See [`Value::encode`] for more details.
+    pub fn encode_with_selector(&self, selector: Selector) -> Vec<u8> {
+        crate::encode_with_selector(selector, &Encodable(self))
+    }
+
+    /// Encodes a `Value` to the specified buffer.
+    ///
+    /// See [`Value::encode`] for more details.
+    pub fn encode_to(&self, buffer: &mut [u8]) -> Result<(), BufferSizeError> {
+        crate::encode_to(buffer, &Encodable(self))
+    }
+
     /// Decodes a `Value`.
     ///
     /// Note that `Value`s can't use the [`crate::decode`] method directly as
     /// it requires runtime type information for proper decoding.
     pub fn decode(kind: &ValueKind, bytes: &[u8]) -> Result<Self, DecodeError> {
         Ok(context::decode::<Decodable>(bytes, kind)?.0)
+    }
+
+    /// Decodes a `Value` from data prefixed with a selector.
+    ///
+    /// See [`Value::decode`] for more details.
+    pub fn decode_with_selector(
+        kind: &ValueKind,
+        bytes: &[u8],
+        selector: Selector,
+    ) -> Result<Self, DecodeError> {
+        let data = bytes
+            .strip_prefix(selector.as_ref())
+            .ok_or(DecodeError::InvalidData)?;
+        Self::decode(kind, data)
     }
 }
 

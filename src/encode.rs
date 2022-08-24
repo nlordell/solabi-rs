@@ -261,6 +261,18 @@ where
     }
 }
 
+macro_rules! impl_encode_for_ref {
+    () => {
+        fn size(&self) -> Size {
+            (**self).size()
+        }
+
+        fn encode(&self, encoder: &mut Encoder) {
+            (**self).encode(encoder)
+        }
+    };
+}
+
 impl<T, const N: usize> Encode for [T; N]
 where
     T: Encode,
@@ -274,6 +286,13 @@ where
             encoder.write(item)
         }
     }
+}
+
+impl<T, const N: usize> Encode for &'_ [T; N]
+where
+    T: Encode,
+{
+    impl_encode_for_ref!();
 }
 
 impl<T> Encode for [T]
@@ -292,6 +311,13 @@ where
             inner.write(item)
         }
     }
+}
+
+impl<T> Encode for &'_ [T]
+where
+    T: Encode,
+{
+    impl_encode_for_ref!();
 }
 
 impl<T> Encode for Vec<T>
@@ -315,6 +341,10 @@ impl Encode for str {
     fn encode(&self, encoder: &mut Encoder) {
         Bytes(self.as_bytes()).encode(encoder)
     }
+}
+
+impl Encode for &'_ str {
+    impl_encode_for_ref!();
 }
 
 impl Encode for String {
@@ -345,6 +375,13 @@ macro_rules! impl_encode_for_tuple {
                 let ($($t,)*) = self;
                 $(encoder.write($t);)*
             }
+        }
+
+        impl<$($t),*> Encode for &'_ ($($t,)*)
+        where
+            $($t: Encode,)*
+        {
+            impl_encode_for_ref!();
         }
     };
 }
@@ -382,3 +419,16 @@ impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S
 impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD }
 impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE }
 impl_encode_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_with_refs() {
+        assert_eq!(encode(&([1, 2, 3])), encode(&(&[1, 2, 3])));
+        assert_eq!(encode(&(vec![1, 2, 3])), encode(&([1, 2, 3].as_slice())));
+        assert_eq!(encode(&((1, true), 2)), encode(&(&(1, true), 2)));
+        assert_eq!(encode(&(String::from("hello"))), encode(&("hello")));
+    }
+}

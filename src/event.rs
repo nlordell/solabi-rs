@@ -25,18 +25,7 @@ pub trait IndexedAnonymous: Sized {
     fn to_topics_anonymous(&self) -> Topics;
 }
 
-/// A trait representing an event encoding.
-pub trait EventEncoding {
-    type Data;
-
-    /// Encode event data into an EVM log.
-    fn encode(&self, data: &Self::Data) -> Log;
-
-    /// Decode event data from an EVM log.
-    fn decode(&self, log: &Log) -> Result<Self::Data, ParseError>;
-}
-
-/// A typed event with a known selector.
+/// An event encoder with a known selector.
 pub struct EventEncoder<I, D> {
     /// The event selector.
     pub selector: Word,
@@ -55,32 +44,17 @@ where
             _marker: PhantomData,
         }
     }
-}
 
-impl<I, D> Debug for EventEncoder<I, D> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.debug_struct("EventEncoder")
-            .field("selector", &Hex(&self.selector))
-            .finish()
-    }
-}
-
-impl<I, D> EventEncoding for EventEncoder<I, D>
-where
-    I: Indexed,
-    D: Encode + Decode,
-{
-    type Data = (I, D);
-
-    fn encode(&self, data: &Self::Data) -> Log {
-        let (indices, data) = data;
+    /// Encode event data into an EVM log.
+    pub fn encode(&self, indices: &I, data: &D) -> Log {
         Log {
             topics: I::to_topics(&self.selector, indices),
             data: crate::encode(data).into(),
         }
     }
 
-    fn decode(&self, log: &Log) -> Result<Self::Data, ParseError> {
+    /// Decode event data from an EVM log.
+    pub fn decode(&self, log: &Log) -> Result<(I, D), ParseError> {
         let (topic0, indices) = I::from_topics(&log.topics)?;
         if topic0 != self.selector {
             return Err(ParseError::SelectorMismatch(topic0));
@@ -91,7 +65,15 @@ where
     }
 }
 
-/// A typed event with a known selector.
+impl<I, D> Debug for EventEncoder<I, D> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_struct("EventEncoder")
+            .field("selector", &Hex(&self.selector))
+            .finish()
+    }
+}
+
+/// An anonymous event encoder.
 pub struct AnonymousEventEncoder<I, D>(PhantomData<*const (I, D)>)
 where
     I: IndexedAnonymous,
@@ -105,6 +87,22 @@ where
     /// Creates a new anonymous event.
     pub fn new() -> Self {
         Self(PhantomData)
+    }
+
+    /// Encode event data into an EVM log.
+    pub fn encode(&self, indices: &I, data: &D) -> Log {
+        Log {
+            topics: I::to_topics_anonymous(indices),
+            data: crate::encode(data).into(),
+        }
+    }
+
+    /// Decode event data from an EVM log.
+    pub fn decode(&self, log: &Log) -> Result<(I, D), ParseError> {
+        let indices = I::from_topics_anonymous(&log.topics)?;
+        let data = crate::decode(&log.data)?;
+
+        Ok((indices, data))
     }
 }
 
@@ -125,29 +123,6 @@ where
 {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl<I, D> EventEncoding for AnonymousEventEncoder<I, D>
-where
-    I: IndexedAnonymous,
-    D: Encode + Decode,
-{
-    type Data = (I, D);
-
-    fn encode(&self, data: &Self::Data) -> Log {
-        let (indices, data) = data;
-        Log {
-            topics: I::to_topics_anonymous(indices),
-            data: crate::encode(data).into(),
-        }
-    }
-
-    fn decode(&self, log: &Log) -> Result<Self::Data, ParseError> {
-        let indices = I::from_topics_anonymous(&log.topics)?;
-        let data = crate::decode(&log.data)?;
-
-        Ok((indices, data))
     }
 }
 
@@ -289,6 +264,6 @@ mod tests {
         };
 
         assert_eq!(transfer.decode(&log).unwrap(), ((from, to), (value,)),);
-        assert_eq!(transfer.encode(&((from, to), (value,))), log);
+        assert_eq!(transfer.encode(&(from, to), &(value,)), log);
     }
 }

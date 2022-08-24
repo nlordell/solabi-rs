@@ -41,21 +41,10 @@ pub fn decode_with_selector<T>(selector: Selector, bytes: &[u8]) -> Result<T, De
 where
     T: Decode,
 {
-    if bytes.len() < 4 {
-        return Err(DecodeError::EndOfBuffer);
-    }
-
-    let (prefix, data) = bytes.split_at(4);
-    if prefix != selector.as_ref() {
-        return Err(DecodeError::InvalidData);
-    }
-
-    let mut decoder = Decoder::new(data);
-
-    // Make sure to call `decode` on the type instead of `read`. This is
-    // because the top level tuple that gets encoded never gets redirected
-    // even if it is a dynamic type.
-    T::decode(&mut decoder)
+    let data = bytes
+        .strip_prefix(selector.as_ref())
+        .ok_or(DecodeError::InvalidData)?;
+    decode(data)
 }
 
 /// An ABI decoder
