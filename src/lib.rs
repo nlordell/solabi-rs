@@ -3,11 +3,17 @@
 pub mod bytes;
 pub mod decode;
 pub mod encode;
+pub mod event;
+mod fmt;
 pub mod function;
+pub mod log;
 pub mod primitive;
 pub mod value;
 
-pub use self::{decode::decode, encode::encode};
+pub use self::{
+    decode::{decode, decode_with_selector},
+    encode::{encode, encode_to, encode_with_selector},
+};
 pub use ethaddr as addr;
 pub use ethnum as num;
 
@@ -26,7 +32,7 @@ mod tests {
     macro_rules! assert_encoding {
         ($value:expr, $encoded:expr $(,)?) => {{
             let (value, encoded) = ($value, $encoded);
-            assert_eq!(encode(value.clone()), encoded);
+            assert_eq!(encode(&value), encoded);
 
             // Small work around to avoid manually specifying types.
             #[allow(unused_assignments)]

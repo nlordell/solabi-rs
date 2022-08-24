@@ -2,9 +2,14 @@
 
 use crate::{
     bytes::Bytes,
+    function::Selector,
     primitive::{Primitive, Word},
 };
-use std::mem;
+use std::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+    mem,
+};
 
 /// Represents an encodable type.
 pub trait Encode {
@@ -21,20 +26,47 @@ pub trait Encode {
 }
 
 /// ABI-encodes a value.
-pub fn encode<T>(value: T) -> Vec<u8>
+pub fn encode<T>(value: &T) -> Vec<u8>
+where
+    T: Encode,
+{
+    let mut buffer = vec![0; value.size().byte_length()];
+    encode_to(&mut buffer, value).unwrap();
+    buffer
+}
+
+/// ABI-encodes a value with a selector.
+pub fn encode_with_selector<T>(selector: Selector, value: &T) -> Vec<u8>
+where
+    T: Encode,
+{
+    let sel = selector.as_ref();
+
+    let mut buffer = vec![0; value.size().byte_length() + sel.len()];
+    buffer[..sel.len()].copy_from_slice(sel);
+
+    encode_to(&mut buffer[sel.len()..], value).unwrap();
+    buffer
+}
+
+/// ABI-encodes a value to the specified buffer.
+pub fn encode_to<T>(buffer: &mut [u8], value: &T) -> Result<(), BufferSizeError>
 where
     T: Encode,
 {
     let size = value.size();
-    let mut buffer = vec![0; size.byte_length()];
-    let mut encoder = Encoder::new(&mut buffer, size);
+    if buffer.len() != size.byte_length() {
+        return Err(BufferSizeError);
+    }
+
+    let mut encoder = Encoder::new(buffer, size);
 
     // Make sure to call `encode` on the value instead of `write`. This is
     // because the top level tuple that gets encoded never gets redirected
     // even if it is a dynamic type.
     value.encode(&mut encoder);
 
-    buffer
+    Ok(())
 }
 
 /// Encoding size.
@@ -131,11 +163,7 @@ impl<'a> Encoder<'a> {
     ///
     /// Panics if the buffer size does not match the word count.
     fn new(buffer: &'a mut [u8], size: Size) -> Self {
-        assert_eq!(
-            buffer.len(),
-            size.byte_length(),
-            "buffer length does not match encoder size"
-        );
+        debug_assert_eq!(buffer.len(), size.byte_length(), "{BufferSizeError}");
 
         let tail_offset = size.tail_byte_offset();
         let (head, tail) = buffer.split_at_mut(tail_offset);
@@ -195,6 +223,18 @@ impl<'a> Encoder<'a> {
     }
 }
 
+/// An error indicating that a buffer of incorrect size was used.
+#[derive(Debug)]
+pub struct BufferSizeError;
+
+impl Display for BufferSizeError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str("buffer length does not match encoder size")
+    }
+}
+
+impl Error for BufferSizeError {}
+
 /// Pads the specified size to a 32-byte boundry.
 fn pad32(value: usize) -> usize {
     ((value + 31) / 32) * 32
@@ -236,20 +276,7 @@ where
     }
 }
 
-impl<T, const N: usize> Encode for &'_ [T; N]
-where
-    T: Encode,
-{
-    fn size(&self) -> Size {
-        (**self).size()
-    }
-
-    fn encode(&self, encoder: &mut Encoder) {
-        (**self).encode(encoder)
-    }
-}
-
-impl<T> Encode for &'_ [T]
+impl<T> Encode for [T]
 where
     T: Encode,
 {
@@ -261,7 +288,7 @@ where
         encoder.write(&self.len());
         let inner_size = Size::tuple(self.iter().map(|item| item.size()));
         let mut inner = encoder.untail(inner_size);
-        for item in *self {
+        for item in self {
             inner.write(item)
         }
     }
@@ -280,7 +307,7 @@ where
     }
 }
 
-impl Encode for &'_ str {
+impl Encode for str {
     fn size(&self) -> Size {
         Bytes(self.as_bytes()).size()
     }
@@ -317,19 +344,6 @@ macro_rules! impl_encode_for_tuple {
             fn encode(&self, encoder: &mut Encoder) {
                 let ($($t,)*) = self;
                 $(encoder.write($t);)*
-            }
-        }
-
-        impl<$($t),*> Encode for &'_ ($($t,)*)
-        where
-            $($t: Encode,)*
-        {
-            fn size(&self) -> Size {
-                (**self).size()
-            }
-
-            fn encode(&self, encoder: &mut Encoder) {
-                (**self).encode(encoder)
             }
         }
     };

@@ -2,7 +2,10 @@
 
 pub mod context;
 
-use crate::primitive::{Primitive, Word};
+use crate::{
+    function::Selector,
+    primitive::{Primitive, Word},
+};
 use ethnum::U256;
 use std::{
     error::Error,
@@ -26,6 +29,28 @@ where
     T: Decode,
 {
     let mut decoder = Decoder::new(bytes);
+
+    // Make sure to call `decode` on the type instead of `read`. This is
+    // because the top level tuple that gets encoded never gets redirected
+    // even if it is a dynamic type.
+    T::decode(&mut decoder)
+}
+
+/// ABI-decodes a value prefixed with a selector.
+pub fn decode_with_selector<T>(selector: Selector, bytes: &[u8]) -> Result<T, DecodeError>
+where
+    T: Decode,
+{
+    if bytes.len() < 4 {
+        return Err(DecodeError::EndOfBuffer);
+    }
+
+    let (prefix, data) = bytes.split_at(4);
+    if prefix != selector.as_ref() {
+        return Err(DecodeError::InvalidData);
+    }
+
+    let mut decoder = Decoder::new(data);
 
     // Make sure to call `decode` on the type instead of `read`. This is
     // because the top level tuple that gets encoded never gets redirected
@@ -116,11 +141,11 @@ pub enum DecodeError {
 }
 
 impl Display for DecodeError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            DecodeError::EndOfBuffer => f.write_str("unexpected end of buffer while decoding"),
-            DecodeError::SizeOverflow => f.write_str("value overflows a `usize`"),
-            DecodeError::InvalidData => f.write_str("invalid data while decoding"),
+            Self::EndOfBuffer => f.write_str("unexpected end of buffer while decoding"),
+            Self::SizeOverflow => f.write_str("value overflows a `usize`"),
+            Self::InvalidData => f.write_str("invalid data while decoding"),
         }
     }
 }

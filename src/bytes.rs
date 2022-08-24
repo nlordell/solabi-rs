@@ -3,12 +3,16 @@
 use crate::{
     decode::{Decode, DecodeError, Decoder},
     encode::{Encode, Encoder, Size},
+    fmt::Hex,
     primitive::{Primitive, Word},
 };
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt::{self, Debug, Formatter},
+    ops::{Deref, DerefMut},
+};
 
 /// A wrapper type for bytes.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
 pub struct Bytes<T>(pub T);
 
 impl<T> AsRef<[u8]> for Bytes<T>
@@ -26,6 +30,15 @@ where
 {
     fn as_mut(&mut self) -> &mut [u8] {
         self.0.as_mut()
+    }
+}
+
+impl<T> Debug for Bytes<T>
+where
+    T: AsRef<[u8]>,
+{
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_tuple("Bytes").field(&Hex(self.0.as_ref())).finish()
     }
 }
 

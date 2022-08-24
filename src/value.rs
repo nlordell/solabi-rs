@@ -80,7 +80,7 @@ impl Value {
     /// `Vec<Value>` is not a valid Solidity type (which is why the [`Array`]
     /// abstraction exists).
     pub fn encode(&self) -> Vec<u8> {
-        crate::encode(Encodable(self))
+        crate::encode(&Encodable(self))
     }
 
     /// Decodes a `Value`.
