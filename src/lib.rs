@@ -1,5 +1,6 @@
 //! Solidity ABI encoding and decoding implementation.
 
+pub mod abi;
 pub mod bytes;
 pub mod decode;
 pub mod encode;

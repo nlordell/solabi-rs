@@ -257,6 +257,17 @@ pub enum ValueKind {
     Tuple(Vec<ValueKind>),
 }
 
+impl ValueKind {
+    /// The `uint` value kind, which is equivalent to a `uint256`.
+    pub const UINT: Self = Self::Uint(BitWidth::MAX);
+
+    /// The `int` value kind, which is equivalent to a `int256`.
+    pub const INT: Self = Self::Int(BitWidth::MAX);
+
+    /// The value kind used for enums.
+    pub const ENUM: Self = Self::Uint(BitWidth::ENUM);
+}
+
 impl Display for ValueKind {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
@@ -361,6 +372,15 @@ pub enum ParseValueKindError {
 pub struct BitWidth(u32);
 
 impl BitWidth {
+    /// The smallest possible bit-width.
+    pub const MIN: Self = Self(8);
+
+    /// The largets possible bit-width.
+    pub const MAX: Self = Self(256);
+
+    /// The bit-width used for encoding `enum` values.
+    pub const ENUM: Self = Self(8);
+
     /// Checked bit-width creation.
     ///
     /// Bitwidths must be multiple of 8s between 8 and 256.
@@ -471,6 +491,18 @@ impl Deref for Uint {
 pub struct ByteLength(usize);
 
 impl ByteLength {
+    /// The smallest possible byte-length.
+    pub const MIN: Self = Self(1);
+
+    /// The largets possible byte-length.
+    pub const MAX: Self = Self(32);
+
+    /// The byte-length used for encoding selectors.
+    pub const SELECTOR: Self = Self(4);
+
+    /// The byte-length used for encoding hashes.
+    pub const HASH: Self = Self(32);
+
     /// Checked bit-width creation.
     ///
     /// Bitwidths must be multiple of 8s between 8 and 256.

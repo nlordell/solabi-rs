@@ -1,6 +1,4 @@
 //! Solidity ABI function pointer type.
-//!
-//! TODO(nlordell): Statically typed function signatures.
 
 use crate::{
     decode::{Decode, DecodeError},
@@ -12,6 +10,7 @@ use ethaddr::Address;
 use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
+    ops::{Deref, DerefMut},
 };
 
 /// A function selector type.
@@ -27,6 +26,32 @@ impl AsRef<[u8]> for Selector {
 impl From<[u8; 4]> for Selector {
     fn from(bytes: [u8; 4]) -> Self {
         Self(bytes)
+    }
+}
+
+impl Deref for Selector {
+    type Target = [u8; 4];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Selector {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl PartialEq<[u8]> for Selector {
+    fn eq(&self, other: &[u8]) -> bool {
+        self.as_ref() == other
+    }
+}
+
+impl PartialEq<[u8; 4]> for Selector {
+    fn eq(&self, other: &[u8; 4]) -> bool {
+        self.0 == *other
     }
 }
 
@@ -71,9 +96,9 @@ where
     R: Encode + Decode,
 {
     /// Creates a new function encoder from a selector.
-    pub fn new(selector: impl Into<Selector>) -> Self {
+    pub fn new(selector: Selector) -> Self {
         Self {
-            selector: selector.into(),
+            selector,
             _marker: PhantomData,
         }
     }
@@ -116,7 +141,7 @@ mod tests {
 
     #[test]
     fn transfer_encoder() {
-        let transfer = FunctionEncoder::<(Address, U256), (bool,)>::new(hex!("a9059cbb"));
+        let transfer = FunctionEncoder::<(Address, U256), (bool,)>::new(Selector(hex!("a9059cbb")));
 
         let to = address!("0x0101010101010101010101010101010101010101");
         let value = U256::new(4_200_000_000_000_000_000);
@@ -141,17 +166,17 @@ mod tests {
     #[test]
     fn unit_function_types() {
         let selector = [0; 4];
-        let unit = FunctionEncoder::<(), ()>::new(selector);
+        let unit = FunctionEncoder::<(), ()>::new(Selector(selector));
 
         assert_eq!(unit.encode_params(&()), selector);
         assert!(unit.decode_params(&selector).is_ok());
-        assert_eq!(unit.encode_returns(&()), []);
+        assert_eq!(unit.encode_returns(&()), b"");
         assert!(unit.decode_returns(&[]).is_ok());
     }
 
     #[test]
     fn errors_on_incorrect_selector() {
-        let unit = FunctionEncoder::<(), ()>::new([1; 4]);
+        let unit = FunctionEncoder::<(), ()>::new(Selector([1; 4]));
         assert!(unit.decode_params(&[2; 4]).is_err());
     }
 }
