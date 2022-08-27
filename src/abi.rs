@@ -172,7 +172,7 @@ impl TryFrom<json::Descriptor> for EventDescriptor {
         Ok(Self {
             name: value.name.ok_or("event missing name")?,
             inputs: from_fields(value.inputs.ok_or("event missing inputs")?)?,
-            anonymous: value.anonymous.ok_or("event missing anonymous flag")?,
+            anonymous: value.anonymous.unwrap_or_default(),
         })
     }
 }
@@ -377,7 +377,7 @@ impl TryFrom<json::Field> for EventField {
     type Error = &'static str;
 
     fn try_from(value: json::Field) -> Result<Self, Self::Error> {
-        let indexed = value.indexed.ok_or("event field missing anonymous flag")?;
+        let indexed = value.indexed.unwrap_or_default();
         Ok(Self {
             field: value.try_into()?,
             indexed,

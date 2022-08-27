@@ -1,8 +1,8 @@
 //! Raw JSON ABI types.
 //!
-//! We convert `Fragments` this intermediate representation for serializing
-//! and deserializing to JSON in order to be able to deal with different ABI
-//! outputs from different compiler versions.
+//! We convert `Descriptor`s to and from this intermediate representation for
+//! serializing and deserializing to JSON in order to be able to deal with
+//! different ABI outputs from different compiler versions.
 
 use crate::value::ValueKind;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -54,8 +54,10 @@ impl Descriptor {
     pub fn state_mutability(&self) -> StateMutability {
         match (self.state_mutability, self.constant, self.payable) {
             (Some(state_mutability), _, _) => state_mutability,
-            (None, Some(constant), Some(payable)) => StateMutability::with_flags(constant, payable),
-            _ => StateMutability::Payable,
+            (None, constant, payable) => StateMutability::with_flags(
+                constant.unwrap_or_default(),
+                payable.unwrap_or_default(),
+            ),
         }
     }
 }
@@ -98,6 +100,7 @@ impl From<DescriptorKind> for Descriptor {
 #[serde(rename_all = "camelCase")]
 pub struct Field {
     /// The name.
+    #[serde(default)]
     pub name: String,
     /// The field type.
     #[serde(rename = "type")]
@@ -364,8 +367,421 @@ impl StateMutability {
     pub fn with_flags(constant: bool, payable: bool) -> StateMutability {
         match (constant, payable) {
             (_, true) => Self::Payable,
-            (true, false) => Self::NonPayable,
-            (false, false) => Self::View,
+            (false, _) => Self::NonPayable,
+            (true, _) => Self::View,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{abi, value::BitWidth};
+
+    #[test]
+    fn ethers_js_example_json_abi() {
+        let descriptors = serde_json::from_str::<Vec<Descriptor>>(
+            r#"
+            [
+              {
+                "type": "constructor",
+                "payable": false,
+                "inputs": [
+                  { "type": "string", "name": "symbol" },
+                  { "type": "string", "name": "name" }
+                ]
+              },
+              {
+                "type": "function",
+                "name": "transferFrom",
+                "constant": false,
+                "payable": false,
+                "inputs": [
+                  { "type": "address", "name": "from" },
+                  { "type": "address", "name": "to" },
+                  { "type": "uint256", "name": "value" }
+                ],
+                "outputs": [ ]
+              },
+              {
+                "type": "function",
+                "name": "balanceOf",
+                "constant":true,
+                "stateMutability": "view",
+                "payable":false, "inputs": [
+                  { "type": "address", "name": "owner" }
+                ],
+                "outputs": [
+                  { "type": "uint256" }
+                ]
+              },
+              {
+                "type": "event",
+                "anonymous": false,
+                "name": "Transfer",
+                "inputs": [
+                  { "type": "address", "name": "from", "indexed":true },
+                  { "type": "address", "name": "to", "indexed":true },
+                  { "type": "uint256", "name": "value" }
+                ]
+              },
+              {
+                "type": "error",
+                "name": "InsufficientBalance",
+                "inputs": [
+                  { "type": "address", "name": "owner" },
+                  { "type": "uint256", "name": "balance" }
+                ]
+              },
+              {
+                "type": "function",
+                "name": "addPerson",
+                "constant": false,
+                "payable": false,
+                "inputs": [
+                  {
+                    "type": "tuple",
+                    "name": "person",
+                    "components": [
+                      { "type": "string", "name": "name" },
+                      { "type": "uint16", "name": "age" }
+                    ]
+                  }
+                ],
+                "outputs": []
+              },
+              {
+                "type": "function",
+                "name": "addPeople",
+                "constant": false,
+                "payable": false,
+                "inputs": [
+                  {
+                    "type": "tuple[]",
+                    "name": "person",
+                    "components": [
+                      { "type": "string", "name": "name" },
+                      { "type": "uint16", "name": "age" }
+                    ]
+                  }
+                ],
+                "outputs": []
+              },
+              {
+                "type": "function",
+                "name": "getPerson",
+                "constant": true,
+                "stateMutability": "view",
+                "payable": false,
+                "inputs": [
+                  { "type": "uint256", "name": "id" }
+                ],
+                "outputs": [
+                  {
+                    "type": "tuple",
+                    "components": [
+                      { "type": "string", "name": "name" },
+                      { "type": "uint16", "name": "age" }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "event",
+                "anonymous": false,
+                "name": "PersonAdded",
+                "inputs": [
+                  { "type": "uint256", "name": "id", "indexed": true },
+                  {
+                    "type": "tuple",
+                    "name": "person",
+                    "components": [
+                      { "type": "string", "name": "name", "indexed": false },
+                      { "type": "uint16", "name": "age", "indexed": false }
+                    ]
+                  }
+                ]
+              }
+            ]
+        "#,
+        )
+        .unwrap();
+
+        let abi = descriptors
+            .into_iter()
+            .map(|d| abi::Descriptor::try_from(d).unwrap())
+            .collect::<Vec<_>>();
+
+        let expected = vec![
+            abi::Descriptor::Constructor(abi::ConstructorDescriptor {
+                inputs: vec![
+                    abi::Parameter {
+                        field: abi::Field {
+                            name: "symbol".to_owned(),
+                            kind: ValueKind::String,
+                            components: None,
+                            internal_type: None,
+                        },
+                        kind_name: None,
+                    },
+                    abi::Parameter {
+                        field: abi::Field {
+                            name: "name".to_owned(),
+                            kind: ValueKind::String,
+                            components: None,
+                            internal_type: None,
+                        },
+                        kind_name: None,
+                    },
+                ],
+                state_mutability: StateMutability::NonPayable,
+            }),
+            abi::Descriptor::Function(abi::FunctionDescriptor {
+                name: "transferFrom".to_owned(),
+                inputs: vec![
+                    abi::Parameter {
+                        field: abi::Field {
+                            name: "from".to_owned(),
+                            kind: ValueKind::Address,
+                            components: None,
+                            internal_type: None,
+                        },
+                        kind_name: None,
+                    },
+                    abi::Parameter {
+                        field: abi::Field {
+                            name: "to".to_owned(),
+                            kind: ValueKind::Address,
+                            components: None,
+                            internal_type: None,
+                        },
+                        kind_name: None,
+                    },
+                    abi::Parameter {
+                        field: abi::Field {
+                            name: "value".to_owned(),
+                            kind: ValueKind::UINT,
+                            components: None,
+                            internal_type: None,
+                        },
+                        kind_name: None,
+                    },
+                ],
+                outputs: vec![],
+                state_mutability: StateMutability::NonPayable,
+            }),
+            abi::Descriptor::Function(abi::FunctionDescriptor {
+                name: "balanceOf".to_owned(),
+                inputs: vec![abi::Parameter {
+                    field: abi::Field {
+                        name: "owner".to_owned(),
+                        kind: ValueKind::Address,
+                        components: None,
+                        internal_type: None,
+                    },
+                    kind_name: None,
+                }],
+                outputs: vec![abi::Parameter {
+                    field: abi::Field {
+                        name: "".to_owned(),
+                        kind: ValueKind::UINT,
+                        components: None,
+                        internal_type: None,
+                    },
+                    kind_name: None,
+                }],
+                state_mutability: StateMutability::View,
+            }),
+            abi::Descriptor::Event(abi::EventDescriptor {
+                name: "Transfer".to_owned(),
+                inputs: vec![
+                    abi::EventField {
+                        field: abi::Field {
+                            name: "from".to_owned(),
+                            kind: ValueKind::Address,
+                            components: None,
+                            internal_type: None,
+                        },
+                        indexed: true,
+                    },
+                    abi::EventField {
+                        field: abi::Field {
+                            name: "to".to_owned(),
+                            kind: ValueKind::Address,
+                            components: None,
+                            internal_type: None,
+                        },
+                        indexed: true,
+                    },
+                    abi::EventField {
+                        field: abi::Field {
+                            name: "value".to_owned(),
+                            kind: ValueKind::UINT,
+                            components: None,
+                            internal_type: None,
+                        },
+                        indexed: false,
+                    },
+                ],
+                anonymous: false,
+            }),
+            abi::Descriptor::Error(abi::ErrorDescriptor {
+                name: "InsufficientBalance".to_owned(),
+                inputs: vec![
+                    abi::Field {
+                        name: "owner".to_owned(),
+                        kind: ValueKind::Address,
+                        components: None,
+                        internal_type: None,
+                    },
+                    abi::Field {
+                        name: "balance".to_owned(),
+                        kind: ValueKind::UINT,
+                        components: None,
+                        internal_type: None,
+                    },
+                ],
+            }),
+            abi::Descriptor::Function(abi::FunctionDescriptor {
+                name: "addPerson".to_owned(),
+                inputs: vec![abi::Parameter {
+                    field: abi::Field {
+                        name: "person".to_owned(),
+                        kind: ValueKind::Tuple(vec![
+                            ValueKind::String,
+                            ValueKind::Uint(BitWidth::new(16).unwrap()),
+                        ]),
+                        components: Some(vec![
+                            abi::Field {
+                                name: "name".to_owned(),
+                                kind: ValueKind::String,
+                                components: None,
+                                internal_type: None,
+                            },
+                            abi::Field {
+                                name: "age".to_owned(),
+                                kind: ValueKind::Uint(BitWidth::new(16).unwrap()),
+                                components: None,
+                                internal_type: None,
+                            },
+                        ]),
+                        internal_type: None,
+                    },
+                    kind_name: None,
+                }],
+                outputs: vec![],
+                state_mutability: StateMutability::NonPayable,
+            }),
+            abi::Descriptor::Function(abi::FunctionDescriptor {
+                name: "addPeople".to_owned(),
+                inputs: vec![abi::Parameter {
+                    field: abi::Field {
+                        name: "person".to_owned(),
+                        kind: ValueKind::Array(Box::new(ValueKind::Tuple(vec![
+                            ValueKind::String,
+                            ValueKind::Uint(BitWidth::new(16).unwrap()),
+                        ]))),
+                        components: Some(vec![
+                            abi::Field {
+                                name: "name".to_owned(),
+                                kind: ValueKind::String,
+                                components: None,
+                                internal_type: None,
+                            },
+                            abi::Field {
+                                name: "age".to_owned(),
+                                kind: ValueKind::Uint(BitWidth::new(16).unwrap()),
+                                components: None,
+                                internal_type: None,
+                            },
+                        ]),
+                        internal_type: None,
+                    },
+                    kind_name: None,
+                }],
+                outputs: vec![],
+                state_mutability: StateMutability::NonPayable,
+            }),
+            abi::Descriptor::Function(abi::FunctionDescriptor {
+                name: "getPerson".to_owned(),
+                inputs: vec![abi::Parameter {
+                    field: abi::Field {
+                        name: "id".to_owned(),
+                        kind: ValueKind::UINT,
+                        components: None,
+                        internal_type: None,
+                    },
+                    kind_name: None,
+                }],
+                outputs: vec![abi::Parameter {
+                    field: abi::Field {
+                        name: "".to_owned(),
+                        kind: ValueKind::Tuple(vec![
+                            ValueKind::String,
+                            ValueKind::Uint(BitWidth::new(16).unwrap()),
+                        ]),
+                        components: Some(vec![
+                            abi::Field {
+                                name: "name".to_owned(),
+                                kind: ValueKind::String,
+                                components: None,
+                                internal_type: None,
+                            },
+                            abi::Field {
+                                name: "age".to_owned(),
+                                kind: ValueKind::Uint(BitWidth::new(16).unwrap()),
+                                components: None,
+                                internal_type: None,
+                            },
+                        ]),
+                        internal_type: None,
+                    },
+                    kind_name: None,
+                }],
+                state_mutability: StateMutability::View,
+            }),
+            abi::Descriptor::Event(abi::EventDescriptor {
+                name: "PersonAdded".to_owned(),
+                inputs: vec![
+                    abi::EventField {
+                        field: abi::Field {
+                            name: "id".to_owned(),
+                            kind: ValueKind::UINT,
+                            components: None,
+                            internal_type: None,
+                        },
+                        indexed: true,
+                    },
+                    abi::EventField {
+                        field: abi::Field {
+                            name: "person".to_owned(),
+                            kind: ValueKind::Tuple(vec![
+                                ValueKind::String,
+                                ValueKind::Uint(BitWidth::new(16).unwrap()),
+                            ]),
+                            components: Some(vec![
+                                abi::Field {
+                                    name: "name".to_owned(),
+                                    kind: ValueKind::String,
+                                    components: None,
+                                    internal_type: None,
+                                },
+                                abi::Field {
+                                    name: "age".to_owned(),
+                                    kind: ValueKind::Uint(BitWidth::new(16).unwrap()),
+                                    components: None,
+                                    internal_type: None,
+                                },
+                            ]),
+                            internal_type: None,
+                        },
+                        indexed: false,
+                    },
+                ],
+                anonymous: false,
+            }),
+        ];
+
+        assert_eq!(abi, expected);
     }
 }
