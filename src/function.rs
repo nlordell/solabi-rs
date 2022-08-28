@@ -124,7 +124,7 @@ where
     }
 }
 
-impl<I, D> Debug for FunctionEncoder<I, D> {
+impl<P, R> Debug for FunctionEncoder<P, R> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_struct("FunctionEncoder")
             .field("selector", &Hex(self.selector.as_ref()))

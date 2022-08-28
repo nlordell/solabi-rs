@@ -4,6 +4,7 @@ pub mod abi;
 pub mod bytes;
 pub mod decode;
 pub mod encode;
+pub mod error;
 pub mod event;
 mod fmt;
 pub mod function;
