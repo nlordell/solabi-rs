@@ -17,47 +17,62 @@ use super::{
     FunctionDescriptor, Parameter, StateMutability,
 };
 use crate::value::ValueKind;
-use std::fmt::{self, Display, Formatter};
+use std::{
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 
 /// A Solidity declaration parsing result.
-pub type Result<T, E = ParseError> = std::result::Result<T, E>;
+type Result<T, E = ParseError> = std::result::Result<T, E>;
 
-/// Parses a declaration to an ABI descriptor.
-pub fn parse(s: &str) -> Result<Descriptor> {
-    if s.starts_with("function") {
-        parse_function(s).map(Descriptor::Function)
-    } else if s.starts_with("constructor") {
-        parse_constructor(s).map(Descriptor::Constructor)
-    } else if s.starts_with("event") {
-        parse_event(s).map(Descriptor::Event)
-    } else if s.starts_with("error") {
-        parse_error(s).map(Descriptor::Error)
-    } else {
-        Err(ParseError {
-            kind: ParseErrorKind::Expect("declaration"),
-            pos: 0,
-        })
+impl Descriptor {
+    /// Parses a declaration to an ABI descriptor.
+    pub fn parse_declaration(s: &str) -> Result<Self> {
+        if s.starts_with("function") {
+            FunctionDescriptor::parse_declaration(s).map(Self::Function)
+        } else if s.starts_with("constructor") {
+            ConstructorDescriptor::parse_declaration(s).map(Self::Constructor)
+        } else if s.starts_with("event") {
+            EventDescriptor::parse_declaration(s).map(Self::Event)
+        } else if s.starts_with("error") {
+            ErrorDescriptor::parse_declaration(s).map(Self::Error)
+        } else {
+            Err(ParseError {
+                kind: ParseErrorKind::Expect("declaration"),
+                pos: 0,
+                context: None,
+            }
+            .with_context(s))
+        }
     }
 }
 
-/// Parses a declaration to a function descriptor.
-pub fn parse_function(s: &str) -> Result<FunctionDescriptor> {
-    Parser::exec(s, |p| p.function())
+impl FunctionDescriptor {
+    /// Parses a declaration to a function descriptor.
+    pub fn parse_declaration(s: &str) -> Result<Self> {
+        Parser::exec(s, |p| p.function())
+    }
 }
 
-/// Parses a declaration to a constructor descriptor.
-pub fn parse_constructor(s: &str) -> Result<ConstructorDescriptor> {
-    Parser::exec(s, |p| p.constructor())
+impl ConstructorDescriptor {
+    /// Parses a declaration to a constructor descriptor.
+    pub fn parse_declaration(s: &str) -> Result<Self> {
+        Parser::exec(s, |p| p.constructor())
+    }
 }
 
-/// Parses a declaration to an event descriptor.
-pub fn parse_event(s: &str) -> Result<EventDescriptor> {
-    Parser::exec(s, |p| p.event())
+impl EventDescriptor {
+    /// Parses a declaration to an event descriptor.
+    pub fn parse_declaration(s: &str) -> Result<Self> {
+        Parser::exec(s, |p| p.event())
+    }
 }
 
-/// Parses a declaration to an error descriptor.
-pub fn parse_error(s: &str) -> Result<ErrorDescriptor> {
-    Parser::exec(s, |p| p.error())
+impl ErrorDescriptor {
+    /// Parses a declaration to an error descriptor.
+    pub fn parse_declaration(s: &str) -> Result<Self> {
+        Parser::exec(s, |p| p.error())
+    }
 }
 
 /// Internal parser type that keeps a string buffer and the parser's current
@@ -74,9 +89,13 @@ impl<'a> Parser<'a> {
         F: FnOnce(&mut Self) -> Result<T>,
     {
         let mut parser = Self::new(buf);
-        let result = f(&mut parser)?;
-        parser.end()?;
-        Ok(result)
+        Ok(())
+            .and_then(|_| {
+                let result = f(&mut parser)?;
+                parser.end()?;
+                Ok(result)
+            })
+            .map_err(|err: ParseError| err.with_context(buf))
     }
 
     fn new(buf: &'a str) -> Self {
@@ -87,6 +106,7 @@ impl<'a> Parser<'a> {
         ParseError {
             kind,
             pos: self.pos,
+            context: None,
         }
     }
 
@@ -378,13 +398,40 @@ impl<'a> Parser<'a> {
 pub struct ParseError {
     kind: ParseErrorKind,
     pos: usize,
+    context: Option<String>,
+}
+
+impl ParseError {
+    /// Specify the source context.
+    fn with_context(self, s: &str) -> ParseError {
+        const N: usize = 10;
+
+        let start = self.pos.saturating_sub(N);
+        let end = self.pos.saturating_add(N).min(s.len());
+
+        let pre = &s[start..self.pos];
+        let post = &s[self.pos..end];
+        let el = |p| if p == 0 || p == s.len() { "" } else { "..." };
+
+        Self {
+            context: Some(format!("{}{}|{}{}", el(start), pre, post, el(end))),
+            ..self
+        }
+    }
 }
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{} at position {}", self.kind, self.pos)
+        write!(f, "{} at position {}", self.kind, self.pos)?;
+        if let Some(context) = &self.context {
+            write!(f, "({context:?})")?;
+        }
+
+        Ok(())
     }
 }
+
+impl Error for ParseError {}
 
 /// Internal message representation of parsing error.
 ///
@@ -424,7 +471,7 @@ mod tests {
 
     #[test]
     fn parses_function() {
-        let parsed = parse_function(
+        let parsed = FunctionDescriptor::parse_declaration(
             r#"
             function f(
                 address from,
@@ -524,7 +571,7 @@ mod tests {
         };
 
         for function in ["function f()", "function f() returns ()"] {
-            let parsed = parse_function(function).unwrap();
+            let parsed = FunctionDescriptor::parse_declaration(function).unwrap();
             assert_eq!(parsed, expected);
         }
     }
@@ -538,14 +585,14 @@ mod tests {
             ("function f()", StateMutability::NonPayable),
             ("function f() returns (bool)", StateMutability::NonPayable),
         ] {
-            let parsed = parse_function(function).unwrap();
+            let parsed = FunctionDescriptor::parse_declaration(function).unwrap();
             assert_eq!(parsed.state_mutability, state_mutability);
         }
     }
 
     #[test]
     fn parses_constructor() {
-        let parsed = parse_constructor(
+        let parsed = ConstructorDescriptor::parse_declaration(
             r#"
             constructor (address from, (address, uint256 value)[] memory balances);
             "#,
@@ -597,7 +644,7 @@ mod tests {
 
     #[test]
     fn parses_payable_constructor() {
-        let parsed = parse_constructor(
+        let parsed = ConstructorDescriptor::parse_declaration(
             r#"
             constructor(bytes calldata) payable
             "#,
@@ -622,7 +669,7 @@ mod tests {
 
     #[test]
     fn parses_event() {
-        let parsed = parse_event(
+        let parsed = EventDescriptor::parse_declaration(
             r#"
             event Transfer(address indexed from, address indexed to, uint256 value);
             "#,
@@ -669,7 +716,7 @@ mod tests {
     #[test]
     fn parses_anonymous_event() {
         assert_eq!(
-            parse_event("event Foo() anonymous").unwrap(),
+            EventDescriptor::parse_declaration("event Foo() anonymous").unwrap(),
             EventDescriptor {
                 name: "Foo".to_owned(),
                 inputs: vec![],
@@ -680,7 +727,7 @@ mod tests {
 
     #[test]
     fn parses_error_declaration() {
-        let parsed = parse_error(
+        let parsed = ErrorDescriptor::parse_declaration(
             r#"
             error MyError(
                 uint256 someField,
