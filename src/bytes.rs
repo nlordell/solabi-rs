@@ -7,17 +7,34 @@ use crate::{
     primitive::{Primitive, Word},
 };
 use std::{
+    borrow::Borrow,
     fmt::{self, Debug, Formatter},
+    mem,
     ops::{Deref, DerefMut},
 };
 
 /// A wrapper type for bytes.
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
-pub struct Bytes<T>(pub T);
+#[repr(transparent)]
+pub struct Bytes<T>(pub T)
+where
+    T: ?Sized;
+
+impl Bytes<Vec<u8>> {
+    /// Returns a borrowed `Bytes`.
+    pub fn borrowed(&self) -> &Bytes<[u8]> {
+        // SAFETY: DSTs are a bit of a mystery to me... To my understanding
+        // this should be safe because `Bytes` has a transparent layout, so
+        // `&[u8]` and `&Bytes<[u8]>`. Either way, we should get a fat pointer
+        // with the correct length and pointing to the start of the slice and
+        // transmuting between them should be safe.
+        unsafe { mem::transmute(&*self.0) }
+    }
+}
 
 impl<T> AsRef<[u8]> for Bytes<T>
 where
-    T: AsRef<[u8]>,
+    T: AsRef<[u8]> + ?Sized,
 {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
@@ -26,7 +43,7 @@ where
 
 impl<T> AsMut<[u8]> for Bytes<T>
 where
-    T: AsMut<[u8]>,
+    T: AsMut<[u8]> + ?Sized,
 {
     fn as_mut(&mut self) -> &mut [u8] {
         self.0.as_mut()
@@ -35,14 +52,17 @@ where
 
 impl<T> Debug for Bytes<T>
 where
-    T: AsRef<[u8]>,
+    T: AsRef<[u8]> + ?Sized,
 {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_tuple("Bytes").field(&Hex(self.0.as_ref())).finish()
     }
 }
 
-impl<T> Deref for Bytes<T> {
+impl<T> Deref for Bytes<T>
+where
+    T: ?Sized,
+{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -50,9 +70,26 @@ impl<T> Deref for Bytes<T> {
     }
 }
 
-impl<T> DerefMut for Bytes<T> {
+impl<T> DerefMut for Bytes<T>
+where
+    T: ?Sized,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl Borrow<Bytes<[u8]>> for Bytes<Vec<u8>> {
+    fn borrow(&self) -> &Bytes<[u8]> {
+        self.borrowed()
+    }
+}
+
+impl ToOwned for Bytes<[u8]> {
+    type Owned = Bytes<Vec<u8>>;
+
+    fn to_owned(&self) -> Self::Owned {
+        Bytes(self.0.to_owned())
     }
 }
 
@@ -77,6 +114,16 @@ macro_rules! impl_primitive_for_fixed_bytes {
 impl_primitive_for_fixed_bytes! {
      1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16,
     17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+}
+
+impl Encode for Bytes<[u8]> {
+    fn size(&self) -> Size {
+        Bytes(&self.0).size()
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        Bytes(&self.0).encode(encoder)
+    }
 }
 
 impl Encode for Bytes<&'_ [u8]> {

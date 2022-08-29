@@ -3,9 +3,10 @@
 pub mod declaration;
 mod json;
 
-pub use self::json::StateMutability;
-use crate::value::ValueKind;
+use crate::{function::Selector, primitive::Word, value::ValueKind};
 use serde::{Deserialize, Serialize};
+use sha3::{Digest as _, Keccak256};
+use std::fmt::{self, Display, Formatter, Write};
 
 /// A Solidity ABI - i.e. a vector of descriptors.
 pub type Abi = Vec<Descriptor>;
@@ -28,50 +29,6 @@ pub enum Descriptor {
     Error(ErrorDescriptor),
 }
 
-impl TryFrom<json::Descriptor> for Descriptor {
-    type Error = &'static str;
-
-    fn try_from(
-        value: json::Descriptor,
-    ) -> Result<Self, <Descriptor as TryFrom<json::Descriptor>>::Error> {
-        match &value.kind {
-            json::DescriptorKind::Function => value.try_into().map(Self::Function),
-            json::DescriptorKind::Constructor => value.try_into().map(Self::Constructor),
-            json::DescriptorKind::Receive => Ok(Self::Receive),
-            json::DescriptorKind::Fallback => Ok(Self::Fallback(value.state_mutability())),
-            json::DescriptorKind::Event => value.try_into().map(Self::Event),
-            json::DescriptorKind::Error => value.try_into().map(Self::Error),
-        }
-    }
-}
-
-impl From<Descriptor> for json::Descriptor {
-    fn from(descriptor: Descriptor) -> Self {
-        match descriptor {
-            Descriptor::Function(function) => function.into(),
-            Descriptor::Constructor(constructor) => constructor.into(),
-            Descriptor::Receive => Self {
-                state_mutability: Some(StateMutability::Payable),
-                ..json::DescriptorKind::Receive.into()
-            },
-            Descriptor::Fallback(state_mutability) => Self {
-                state_mutability: Some(state_mutability),
-                ..json::DescriptorKind::Fallback.into()
-            },
-            Descriptor::Event(event) => event.into(),
-            Descriptor::Error(error) => error.into(),
-        }
-    }
-}
-
-macro_rules! check {
-    ($cond:expr, $err:literal) => {
-        if !($cond) {
-            return Err($err);
-        }
-    };
-}
-
 /// A function descriptor.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(try_from = "json::Descriptor", into = "json::Descriptor")]
@@ -86,33 +43,33 @@ pub struct FunctionDescriptor {
     pub state_mutability: StateMutability,
 }
 
-impl TryFrom<json::Descriptor> for FunctionDescriptor {
-    type Error = &'static str;
+impl FunctionDescriptor {
+    /// Returns the error decriptor's canonical formatter.
+    pub fn canonical(&self) -> Canonical<Self> {
+        Canonical(self)
+    }
 
-    fn try_from(value: json::Descriptor) -> Result<Self, Self::Error> {
-        check!(
-            value.kind == json::DescriptorKind::Function,
-            "not a function"
-        );
-        let state_mutability = value.state_mutability();
-        Ok(Self {
-            name: value.name.ok_or("function missing name")?,
-            inputs: from_fields(value.inputs.ok_or("function missing inputs")?)?,
-            outputs: from_fields(value.outputs.ok_or("function missing outputs")?)?,
-            state_mutability,
-        })
+    /// Returns a display formatter for the full function signature.
+    ///
+    /// This is different than its canonical representation in that it also
+    /// includes the return types. Function selectors are computed by hashing
+    /// the canonical representation without the return types.
+    pub fn signature(&self) -> Signature {
+        Signature(self)
+    }
+
+    /// Computes the selector the error type.
+    pub fn selector(&self) -> Selector {
+        let mut hasher = Hasher::new();
+        write!(&mut hasher, "{}", self.canonical()).unwrap();
+        hasher.selector()
     }
 }
 
-impl From<FunctionDescriptor> for json::Descriptor {
-    fn from(function: FunctionDescriptor) -> Self {
-        Self {
-            name: Some(function.name),
-            inputs: Some(to_fields(function.inputs)),
-            outputs: Some(to_fields(function.outputs)),
-            state_mutability: Some(function.state_mutability),
-            ..json::DescriptorKind::Function.into()
-        }
+impl Display for Canonical<'_, FunctionDescriptor> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(&self.0.name)?;
+        fmt_fields(f, &self.0.inputs)
     }
 }
 
@@ -124,32 +81,6 @@ pub struct ConstructorDescriptor {
     pub inputs: Vec<Parameter>,
     /// The function state mutability.
     pub state_mutability: StateMutability,
-}
-
-impl TryFrom<json::Descriptor> for ConstructorDescriptor {
-    type Error = &'static str;
-
-    fn try_from(value: json::Descriptor) -> Result<Self, Self::Error> {
-        check!(
-            value.kind == json::DescriptorKind::Constructor,
-            "not a constructor"
-        );
-        let state_mutability = value.state_mutability();
-        Ok(Self {
-            inputs: from_fields(value.inputs.ok_or("constructor missing inputs")?)?,
-            state_mutability,
-        })
-    }
-}
-
-impl From<ConstructorDescriptor> for json::Descriptor {
-    fn from(constructor: ConstructorDescriptor) -> Self {
-        Self {
-            inputs: Some(to_fields(constructor.inputs)),
-            state_mutability: Some(constructor.state_mutability),
-            ..json::DescriptorKind::Constructor.into()
-        }
-    }
 }
 
 /// An event descriptor.
@@ -164,27 +95,28 @@ pub struct EventDescriptor {
     pub anonymous: bool,
 }
 
-impl TryFrom<json::Descriptor> for EventDescriptor {
-    type Error = &'static str;
+impl EventDescriptor {
+    /// Returns the error decriptor's canonical formatter.
+    pub fn canonical(&self) -> Canonical<Self> {
+        Canonical(self)
+    }
 
-    fn try_from(value: json::Descriptor) -> Result<Self, Self::Error> {
-        check!(value.kind == json::DescriptorKind::Event, "not an event");
-        Ok(Self {
-            name: value.name.ok_or("event missing name")?,
-            inputs: from_fields(value.inputs.ok_or("event missing inputs")?)?,
-            anonymous: value.anonymous.unwrap_or_default(),
-        })
+    /// Computes the selector the error type.
+    pub fn selector(&self) -> Option<Word> {
+        if self.anonymous {
+            return None;
+        }
+
+        let mut hasher = Hasher::new();
+        write!(&mut hasher, "{}", self.canonical()).unwrap();
+        Some(hasher.topic())
     }
 }
 
-impl From<EventDescriptor> for json::Descriptor {
-    fn from(event: EventDescriptor) -> Self {
-        Self {
-            name: Some(event.name),
-            inputs: Some(to_fields(event.inputs)),
-            anonymous: Some(event.anonymous),
-            ..json::DescriptorKind::Event.into()
-        }
+impl Display for Canonical<'_, EventDescriptor> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(&self.0.name)?;
+        fmt_fields(f, &self.0.inputs)
     }
 }
 
@@ -198,25 +130,24 @@ pub struct ErrorDescriptor {
     pub inputs: Vec<Field>,
 }
 
-impl TryFrom<json::Descriptor> for ErrorDescriptor {
-    type Error = &'static str;
+impl ErrorDescriptor {
+    /// Returns the error decriptor's canonical formatter.
+    pub fn canonical(&self) -> Canonical<Self> {
+        Canonical(self)
+    }
 
-    fn try_from(value: json::Descriptor) -> Result<Self, Self::Error> {
-        check!(value.kind == json::DescriptorKind::Error, "not an error");
-        Ok(Self {
-            name: value.name.ok_or("error missing name")?,
-            inputs: from_fields(value.inputs.ok_or("error missing inputs")?)?,
-        })
+    /// Computes the selector the error type.
+    pub fn selector(&self) -> Selector {
+        let mut hasher = Hasher::new();
+        write!(&mut hasher, "{}", self.canonical()).unwrap();
+        hasher.selector()
     }
 }
 
-impl From<ErrorDescriptor> for json::Descriptor {
-    fn from(error: ErrorDescriptor) -> Self {
-        Self {
-            name: Some(error.name),
-            inputs: Some(to_fields(error.inputs)),
-            ..json::DescriptorKind::Error.into()
-        }
+impl Display for Canonical<'_, ErrorDescriptor> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(&self.0.name)?;
+        fmt_fields(f, &self.0.inputs)
     }
 }
 
@@ -239,88 +170,9 @@ pub struct Field {
     pub internal_type: Option<String>,
 }
 
-impl TryFrom<json::Field> for Field {
-    type Error = &'static str;
-
-    fn try_from(value: json::Field) -> Result<Self, Self::Error> {
-        let kind = (&value).try_into()?;
-        Ok(Self {
-            name: value.name,
-            kind,
-            components: value
-                .components
-                .map(|components| {
-                    components
-                        .into_iter()
-                        .map(Field::try_from)
-                        .collect::<Result<_, _>>()
-                })
-                .transpose()?,
-            internal_type: value.internal_type,
-        })
-    }
-}
-
-impl TryFrom<&'_ json::Field> for ValueKind {
-    type Error = &'static str;
-
-    /// Converts a tuple kind to its value kind.
-    fn try_from(value: &'_ json::Field) -> Result<Self, Self::Error> {
-        match &value.kind {
-            json::FieldKind::Value(kind) => Ok(kind.clone()),
-            json::FieldKind::Tuple(kind) => {
-                let components = value
-                    .components
-                    .as_ref()
-                    .ok_or("missing components for tuple field")?
-                    .iter()
-                    .map(ValueKind::try_from)
-                    .collect::<Result<_, _>>()?;
-                Ok(kind.to_value(components))
-            }
-            json::FieldKind::Other(_) => Ok(ValueKind::ENUM),
-        }
-    }
-}
-
-impl From<Field> for json::Field {
-    fn from(field: Field) -> Self {
-        let (kind, components) = match json::TupleKind::from_value(&field.kind) {
-            Some((kind, fields)) => {
-                let components = match field.components {
-                    Some(components) => components.into_iter().map(json::Field::from).collect(),
-                    None => fields.iter().map(json::Field::from).collect(),
-                };
-                (json::FieldKind::Tuple(kind), Some(components))
-            }
-            None => (json::FieldKind::Value(field.kind), None),
-        };
-        Self {
-            name: field.name,
-            kind,
-            components,
-            indexed: None,
-            internal_type: field.internal_type,
-        }
-    }
-}
-
-impl From<&'_ ValueKind> for json::Field {
-    fn from(kind: &ValueKind) -> Self {
-        let (kind, components) = match json::TupleKind::from_value(kind) {
-            Some((kind, fields)) => (
-                json::FieldKind::Tuple(kind),
-                Some(fields.iter().map(json::Field::from).collect()),
-            ),
-            None => (json::FieldKind::Value(kind.clone()), None),
-        };
-        Self {
-            name: String::new(),
-            kind,
-            components,
-            indexed: None,
-            internal_type: None,
-        }
+impl Display for Canonical<'_, Field> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.0.kind)
     }
 }
 
@@ -340,26 +192,12 @@ pub struct Parameter {
     pub kind_name: Option<String>,
 }
 
-impl TryFrom<json::Field> for Parameter {
-    type Error = &'static str;
-
-    fn try_from(value: json::Field) -> Result<Self, Self::Error> {
-        let value = value.fixup();
-        let kind_name = value.library_parameter_type();
-        Ok(Self {
-            field: value.try_into()?,
-            kind_name,
-        })
-    }
-}
-
-impl From<Parameter> for json::Field {
-    fn from(parameter: Parameter) -> Self {
-        let mut field = json::Field::from(parameter.field);
-        if let Some(kind_name) = parameter.kind_name {
-            field.kind = json::FieldKind::Other(kind_name);
+impl Display for Canonical<'_, Parameter> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match &self.0.kind_name {
+            Some(kind_name) => f.write_str(kind_name),
+            None => write!(f, "{}", Canonical(&self.0.field)),
         }
-        field
     }
 }
 
@@ -373,195 +211,143 @@ pub struct EventField {
     pub indexed: bool,
 }
 
-impl TryFrom<json::Field> for EventField {
-    type Error = &'static str;
-
-    fn try_from(value: json::Field) -> Result<Self, Self::Error> {
-        let indexed = value.indexed.unwrap_or_default();
-        Ok(Self {
-            field: value.try_into()?,
-            indexed,
-        })
+impl Display for Canonical<'_, EventField> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", Canonical(&self.0.field))
     }
 }
 
-impl From<EventField> for json::Field {
-    fn from(field: EventField) -> Self {
-        Self {
-            indexed: Some(field.indexed),
-            ..field.field.into()
+/// Code execution state mutability.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StateMutability {
+    /// Function that executes without reading blockchain state.
+    Pure,
+    /// Function that reads, but does not modify, blockchain state.
+    View,
+    /// Function that potentially modifies blockchain state, but cannot receive
+    /// any Ether value.
+    NonPayable,
+    /// Function that potentially modifies blockchain state, and can receive
+    /// Ether value.
+    Payable,
+}
+
+impl StateMutability {
+    /// Returns the state mutability given constant and payable flags.
+    fn with_flags(constant: bool, payable: bool) -> StateMutability {
+        match (constant, payable) {
+            (_, true) => Self::Payable,
+            (false, _) => Self::NonPayable,
+            (true, _) => Self::View,
         }
     }
 }
 
-fn from_fields<T>(fields: Vec<json::Field>) -> Result<Vec<T>, T::Error>
-where
-    T: TryFrom<json::Field>,
-{
-    fields.into_iter().map(T::try_from).collect()
+/// Formatter for the canonical representation of an ABI descriptor.
+///
+/// This is the string representation that is used for hashing in order to
+/// compute selectors.
+pub struct Canonical<'a, T>(&'a T);
+
+/// A function signature formatter.
+pub struct Signature<'a>(&'a FunctionDescriptor);
+
+impl Display for Signature<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}:", Canonical(self.0))?;
+        fmt_fields(f, &self.0.outputs)
+    }
 }
 
-fn to_fields<T>(fields: Vec<T>) -> Vec<json::Field>
+/// A helper type used for writing formatted data directly into a hasher to
+/// avoid unecessary allocations.
+struct Hasher(Keccak256);
+
+impl Hasher {
+    fn new() -> Self {
+        Self(Keccak256::new())
+    }
+
+    fn selector(self) -> Selector {
+        let digest = self.0.finalize();
+        Selector(digest[..4].try_into().unwrap())
+    }
+
+    fn topic(self) -> Word {
+        self.0.finalize().into()
+    }
+}
+
+impl Write for Hasher {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.0.update(s);
+        Ok(())
+    }
+}
+
+fn fmt_fields<'a, T, I>(f: &mut Formatter, fields: I) -> fmt::Result
 where
-    T: Into<json::Field>,
+    T: 'a,
+    Canonical<'a, T>: Display,
+    I: IntoIterator<Item = &'a T> + 'a,
 {
-    fields.into_iter().map(T::into).collect()
+    f.write_str("(")?;
+    for (i, field) in fields.into_iter().enumerate() {
+        if i != 0 {
+            f.write_str(",")?;
+        }
+        write!(f, "{}", Canonical(field))?;
+    }
+    f.write_str(")")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use hex_literal::hex;
 
     #[test]
-    fn library_enum_type_handling() {
-        let json = json!([
-            {
-                "inputs": [
-                    {
-                        "internalType": "enum tuple",
-                        "name": "x",
-                        "type": "tuple"
-                    }
-                ],
-                "name": "f",
-                "outputs": [
-                    {
-                        "internalType": "enum L.E",
-                        "name": "y",
-                        "type": "L.E"
-                    }
-                ],
-                "stateMutability": "pure",
-                "type": "function"
-            },
-            {
-                "inputs": [
-                    {
-                        "components": [
-                            {
-                                "internalType": "uint256",
-                                "name": "a",
-                                "type": "uint256"
-                            },
-                            {
-                                "internalType": "enum tuple",
-                                "name": "b",
-                                "type": "tuple"
-                            }
-                        ],
-                        "internalType": "struct L.S[][3]",
-                        "name": "x",
-                        "type": "tuple[][3]"
-                    }
-                ],
-                "name": "g",
-                "outputs": [
-                    {
-                        "components": [
-                            {
-                                "internalType": "uint256",
-                                "name": "a",
-                                "type": "uint256"
-                            },
-                            {
-                                "internalType": "enum L.E",
-                                "name": "b",
-                                "type": "L.E"
-                            }
-                        ],
-                        "internalType": "struct L.T[3][]",
-                        "name": "y",
-                        "type": "tuple[3][]"
-                    }
-                ],
-                "stateMutability": "pure",
-                "type": "function"
-            }
-        ]);
+    fn function_selector() {
+        let function =
+            FunctionDescriptor::parse_declaration("function transfer(address to, uint value)")
+                .unwrap();
+        assert_eq!(function.selector(), hex!("a9059cbb"));
+    }
 
-        let abi = vec![
-            Descriptor::Function(FunctionDescriptor {
-                name: "f".to_string(),
-                inputs: vec![Parameter {
-                    field: Field {
-                        name: "x".to_string(),
-                        kind: ValueKind::ENUM,
-                        components: None,
-                        internal_type: Some("enum tuple".to_string()),
-                    },
-                    kind_name: Some("tuple".to_string()),
-                }],
-                outputs: vec![Parameter {
-                    field: Field {
-                        name: "y".to_string(),
-                        kind: ValueKind::ENUM,
-                        components: None,
-                        internal_type: Some("enum L.E".to_string()),
-                    },
-                    kind_name: Some("L.E".to_string()),
-                }],
-                state_mutability: StateMutability::Pure,
-            }),
-            Descriptor::Function(FunctionDescriptor {
-                name: "g".to_string(),
-                inputs: vec![Parameter {
-                    field: Field {
-                        name: "x".to_string(),
-                        kind: ValueKind::FixedArray(
-                            3,
-                            Box::new(ValueKind::Array(Box::new(ValueKind::Tuple(vec![
-                                ValueKind::UINT,
-                                ValueKind::ENUM,
-                            ])))),
-                        ),
-                        components: Some(vec![
-                            Field {
-                                name: "a".to_string(),
-                                kind: ValueKind::UINT,
-                                components: None,
-                                internal_type: Some("uint256".to_string()),
-                            },
-                            Field {
-                                name: "b".to_string(),
-                                kind: ValueKind::ENUM,
-                                components: None,
-                                internal_type: Some("enum tuple".to_string()),
-                            },
-                        ]),
-                        internal_type: Some("struct L.S[][3]".to_string()),
-                    },
-                    kind_name: Some("(uint256,tuple)[][3]".to_string()),
-                }],
-                outputs: vec![Parameter {
-                    field: Field {
-                        name: "y".to_string(),
-                        kind: ValueKind::Array(Box::new(ValueKind::FixedArray(
-                            3,
-                            Box::new(ValueKind::Tuple(vec![ValueKind::UINT, ValueKind::ENUM])),
-                        ))),
-                        components: Some(vec![
-                            Field {
-                                name: "a".to_string(),
-                                kind: ValueKind::UINT,
-                                components: None,
-                                internal_type: Some("uint256".to_string()),
-                            },
-                            Field {
-                                name: "b".to_string(),
-                                kind: ValueKind::ENUM,
-                                components: None,
-                                internal_type: Some("enum L.E".to_string()),
-                            },
-                        ]),
-                        internal_type: Some("struct L.T[3][]".to_string()),
-                    },
-                    kind_name: Some("(uint256,L.E)[3][]".to_string()),
-                }],
-                state_mutability: StateMutability::Pure,
-            }),
-        ];
+    #[test]
+    fn function_signature() {
+        let function = FunctionDescriptor::parse_declaration(
+            "function transfer(address to, uint value) returns (bool)",
+        )
+        .unwrap();
+        assert_eq!(
+            function.signature().to_string(),
+            "transfer(address,uint256):(bool)",
+        );
+    }
 
-        assert_eq!(abi, serde_json::from_value::<Abi>(json).unwrap());
+    #[test]
+    fn event_selector() {
+        let event = EventDescriptor::parse_declaration(
+            "event Transfer(address indexed to, address indexed from, uint256 value)",
+        )
+        .unwrap();
+        assert_eq!(
+            event.selector().unwrap(),
+            hex!("ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"),
+        );
+    }
+
+    #[test]
+    fn anonymous_event_selector() {
+        let event = EventDescriptor::parse_declaration("event Foo() anonymous").unwrap();
+        assert!(event.selector().is_none());
+    }
+
+    #[test]
+    fn error_selector() {
+        let error = ErrorDescriptor::parse_declaration("error Error(string message)").unwrap();
+        assert_eq!(error.selector(), hex!("08c379a0"));
     }
 }

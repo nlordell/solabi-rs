@@ -14,7 +14,7 @@ use std::{
 };
 
 /// A function selector type.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 pub struct Selector(pub [u8; 4]);
 
 impl AsRef<[u8]> for Selector {
@@ -52,6 +52,12 @@ impl PartialEq<[u8]> for Selector {
 impl PartialEq<[u8; 4]> for Selector {
     fn eq(&self, other: &[u8; 4]) -> bool {
         self.0 == *other
+    }
+}
+
+impl Debug for Selector {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_tuple("Selector").field(&Hex(&self.0)).finish()
     }
 }
 
@@ -127,7 +133,7 @@ where
 impl<P, R> Debug for FunctionEncoder<P, R> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_struct("FunctionEncoder")
-            .field("selector", &Hex(self.selector.as_ref()))
+            .field("selector", &self.selector)
             .finish()
     }
 }
@@ -135,9 +141,11 @@ impl<P, R> Debug for FunctionEncoder<P, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bytes::Bytes;
     use ethaddr::{address, Address};
     use ethnum::U256;
     use hex_literal::hex;
+    use std::borrow::Cow;
 
     #[test]
     fn transfer_encoder() {
@@ -178,5 +186,62 @@ mod tests {
     fn errors_on_incorrect_selector() {
         let unit = FunctionEncoder::<(), ()>::new(Selector([1; 4]));
         assert!(unit.decode_params(&[2; 4]).is_err());
+    }
+
+    #[test]
+    fn encode_borrowed_decode_owned() {
+        let function = FunctionEncoder::<
+            (Cow<str>, Cow<Bytes<[u8]>>, Cow<[U256]>, Cow<[String; 3]>),
+            (),
+        >::new(Selector([0; 4]));
+
+        let owned = (
+            Cow::<str>::Owned("moo".to_owned()),
+            Cow::<Bytes<[u8]>>::Owned(Bytes(vec![1, 2, 3])),
+            Cow::<[U256]>::Owned(vec![U256::MIN, U256::ONE, U256::MAX]),
+            Cow::<[String; 3]>::Owned(["a".to_owned(), "b".to_owned(), "c".to_owned()]),
+        );
+        let borrowed = (
+            Cow::Borrowed(&*owned.0),
+            Cow::Borrowed(&*owned.1),
+            Cow::Borrowed(&*owned.2),
+            Cow::Borrowed(&*owned.3),
+        );
+
+        let data = hex!(
+            "00000000
+             0000000000000000000000000000000000000000000000000000000000000080
+             00000000000000000000000000000000000000000000000000000000000000c0
+             0000000000000000000000000000000000000000000000000000000000000100
+             0000000000000000000000000000000000000000000000000000000000000180
+             0000000000000000000000000000000000000000000000000000000000000003
+             6d6f6f0000000000000000000000000000000000000000000000000000000000
+             0000000000000000000000000000000000000000000000000000000000000003
+             0102030000000000000000000000000000000000000000000000000000000000
+             0000000000000000000000000000000000000000000000000000000000000003
+             0000000000000000000000000000000000000000000000000000000000000000
+             0000000000000000000000000000000000000000000000000000000000000001
+             ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+             0000000000000000000000000000000000000000000000000000000000000060
+             00000000000000000000000000000000000000000000000000000000000000a0
+             00000000000000000000000000000000000000000000000000000000000000e0
+             0000000000000000000000000000000000000000000000000000000000000001
+             6100000000000000000000000000000000000000000000000000000000000000
+             0000000000000000000000000000000000000000000000000000000000000001
+             6200000000000000000000000000000000000000000000000000000000000000
+             0000000000000000000000000000000000000000000000000000000000000001
+             6300000000000000000000000000000000000000000000000000000000000000"
+        );
+
+        assert_eq!(function.encode_params(&owned), data);
+        assert_eq!(function.encode_params(&borrowed), data);
+
+        let decoded = function.decode_params(&data).unwrap();
+
+        assert_eq!(decoded, owned);
+        assert!(matches!(decoded.0, Cow::Owned(_)));
+        assert!(matches!(decoded.1, Cow::Owned(_)));
+        assert!(matches!(decoded.2, Cow::Owned(_)));
+        assert!(matches!(decoded.3, Cow::Owned(_)));
     }
 }

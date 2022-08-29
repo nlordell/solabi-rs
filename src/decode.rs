@@ -8,6 +8,7 @@ use crate::{
 };
 use ethnum::U256;
 use std::{
+    borrow::Cow,
     error::Error,
     fmt::{self, Display, Formatter},
     mem::MaybeUninit,
@@ -41,9 +42,15 @@ pub fn decode_with_selector<T>(selector: Selector, bytes: &[u8]) -> Result<T, De
 where
     T: Decode,
 {
-    let data = bytes
-        .strip_prefix(selector.as_ref())
-        .ok_or(DecodeError::InvalidData)?;
+    decode_with_prefix(&*selector, bytes)
+}
+
+/// ABI-decodes a value prefixed with a prefix.
+pub fn decode_with_prefix<T>(prefix: &[u8], bytes: &[u8]) -> Result<T, DecodeError>
+where
+    T: Decode,
+{
+    let data = bytes.strip_prefix(prefix).ok_or(DecodeError::InvalidData)?;
     decode(data)
 }
 
@@ -224,6 +231,20 @@ impl Decode for String {
     }
 }
 
+impl<T> Decode for Cow<'_, T>
+where
+    T: ToOwned + ?Sized,
+    T::Owned: Decode,
+{
+    fn is_dynamic() -> bool {
+        T::Owned::is_dynamic()
+    }
+
+    fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
+        T::Owned::decode(decoder).map(Cow::Owned)
+    }
+}
+
 macro_rules! impl_decode_for_tuple {
     ($($t:ident),*) => {
         #[allow(non_snake_case, unused_variables)]
@@ -315,5 +336,17 @@ mod tests {
         ))
         .is_err());
         assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn decode_into_owned_cow() {
+        let decoded = decode::<Cow<str>>(&hex!(
+            "0000000000000000000000000000000000000000000000000000000000000003
+             6d6f6f0000000000000000000000000000000000000000000000000000000000"
+        ))
+        .unwrap();
+
+        assert_eq!(decoded, "moo");
+        assert!(matches!(decoded, Cow::Owned(_)));
     }
 }

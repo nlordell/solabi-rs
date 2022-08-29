@@ -2,6 +2,7 @@
 
 pub mod abi;
 pub mod bytes;
+pub mod constructor;
 pub mod decode;
 pub mod encode;
 pub mod error;
@@ -13,8 +14,8 @@ pub mod primitive;
 pub mod value;
 
 pub use self::{
-    decode::{decode, decode_with_selector},
-    encode::{encode, encode_to, encode_with_selector},
+    decode::{decode, decode_with_prefix, decode_with_selector},
+    encode::{encode, encode_to, encode_with_prefix, encode_with_selector},
 };
 pub use ethaddr as addr;
 pub use ethnum as num;

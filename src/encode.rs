@@ -6,6 +6,7 @@ use crate::{
     primitive::{Primitive, Word},
 };
 use std::{
+    borrow::Cow,
     error::Error,
     fmt::{self, Display, Formatter},
     mem,
@@ -46,6 +47,17 @@ where
     buffer[..sel.len()].copy_from_slice(sel);
 
     encode_to(&mut buffer[sel.len()..], value).unwrap();
+    buffer
+}
+
+/// ABI-encodes a value with a byte prefix.
+pub fn encode_with_prefix<T>(prefix: &[u8], value: &T) -> Vec<u8>
+where
+    T: Encode,
+{
+    let mut buffer = vec![0; value.size().byte_length() + prefix.len()];
+    buffer[..prefix.len()].copy_from_slice(prefix);
+    encode_to(&mut buffer[prefix.len()..], value).unwrap();
     buffer
 }
 
@@ -357,6 +369,19 @@ impl Encode for String {
     }
 }
 
+impl<T> Encode for Cow<'_, T>
+where
+    T: Encode + ToOwned + ?Sized,
+{
+    fn size(&self) -> Size {
+        self.as_ref().size()
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        self.as_ref().encode(encoder)
+    }
+}
+
 macro_rules! impl_encode_for_tuple {
     ($($t:ident),*) => {
         #[allow(non_snake_case, unused_variables)]
@@ -430,5 +455,13 @@ mod tests {
         assert_eq!(encode(&(vec![1, 2, 3])), encode(&([1, 2, 3].as_slice())));
         assert_eq!(encode(&((1, true), 2)), encode(&(&(1, true), 2)));
         assert_eq!(encode(&(String::from("hello"))), encode(&("hello")));
+    }
+
+    #[test]
+    fn encode_with_borrowed_and_owned_cow() {
+        let borrowed = Cow::Borrowed("moo");
+        let owned = Cow::Owned("moo".to_owned());
+
+        assert_eq!(encode::<Cow<str>>(&borrowed), encode::<Cow<str>>(&owned));
     }
 }

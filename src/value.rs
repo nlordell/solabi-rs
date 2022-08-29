@@ -1,9 +1,12 @@
 //! Module containing dynamic Solidity value.
 
+mod encoders;
+
+pub use self::encoders::*;
 use crate::{
     decode::{
         context::{self, DecodeContext},
-        DecodeError, Decoder,
+        Decode as _, DecodeError, Decoder,
     },
     encode::{BufferSizeError, Encode, Encoder, Size},
     function::{ExternalFunction, Selector},
@@ -68,6 +71,31 @@ impl Value {
         }
     }
 
+    /// Returns true if the value if of the specified `kind`.
+    ///
+    /// This is an optimized version of `self.kind() == kind` that does not
+    /// require additional allocations.
+    pub fn is_kind(&self, kind: &ValueKind) -> bool {
+        match (self, kind) {
+            (Value::Int(Int(a, _)), ValueKind::Int(b)) => a == b,
+            (Value::Uint(Uint(a, _)), ValueKind::Uint(b)) => a == b,
+            (Value::Address(_), ValueKind::Address) => true,
+            (Value::Bool(_), ValueKind::Bool) => true,
+            (Value::FixedBytes(FixedBytes(a, _)), ValueKind::FixedBytes(b)) => a == b,
+            (Value::Function(_), ValueKind::Function) => true,
+            (Value::FixedArray(a), ValueKind::FixedArray(b, t)) => {
+                a.len() == *b && a.element_kind() == &**t
+            }
+            (Value::Bytes(_), ValueKind::Bytes) => true,
+            (Value::String(_), ValueKind::String) => true,
+            (Value::Array(a), ValueKind::Array(t)) => a.element_kind() == &**t,
+            (Value::Tuple(a), ValueKind::Tuple(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(v, k)| v.is_kind(k))
+            }
+            _ => false,
+        }
+    }
+
     /// Returns the encoded size of the value.
     pub fn size(&self) -> Size {
         Encodable(self).size()
@@ -110,13 +138,10 @@ impl Value {
     /// See [`Value::decode`] for more details.
     pub fn decode_with_selector(
         kind: &ValueKind,
-        bytes: &[u8],
         selector: Selector,
+        bytes: &[u8],
     ) -> Result<Self, DecodeError> {
-        let data = bytes
-            .strip_prefix(selector.as_ref())
-            .ok_or(DecodeError::InvalidData)?;
-        Self::decode(kind, data)
+        Ok(context::decode_with_selector::<Decodable>(selector, bytes, kind)?.0)
     }
 }
 
@@ -206,8 +231,8 @@ impl DecodeContext for Decodable {
                     .map(|_| Ok(decoder.read_context::<Decodable>(element)?.0))
                     .collect::<Result<_, _>>()?,
             )),
-            ValueKind::Bytes => Value::Bytes(decoder.read()?),
-            ValueKind::String => Value::String(decoder.read()?),
+            ValueKind::Bytes => Value::Bytes(Vec::decode(decoder)?),
+            ValueKind::String => Value::String(String::decode(decoder)?),
             ValueKind::Array(element) => {
                 let len = decoder.read_size()?;
                 let mut decoder = decoder.anchor();

@@ -3,6 +3,7 @@
 //! This allows values to be decoded that rely on runtime type information.
 
 use super::{DecodeError, Decoder};
+use crate::function::Selector;
 
 /// Represents a decodable type requing runtime context for decoding.
 pub trait DecodeContext: Sized {
@@ -27,6 +28,31 @@ where
     // because the top level tuple that gets encoded never gets redirected
     // even if it is a dynamic type.
     T::decode_context(&mut decoder, context)
+}
+
+/// ABI-decodes a value prefixed with a selector.
+pub fn decode_with_selector<T>(
+    selector: Selector,
+    bytes: &[u8],
+    context: &T::Context,
+) -> Result<T, DecodeError>
+where
+    T: DecodeContext,
+{
+    decode_with_prefix(&*selector, bytes, context)
+}
+
+/// ABI-decodes a value prefixed with a prefix.
+pub fn decode_with_prefix<T>(
+    prefix: &[u8],
+    bytes: &[u8],
+    context: &T::Context,
+) -> Result<T, DecodeError>
+where
+    T: DecodeContext,
+{
+    let data = bytes.strip_prefix(prefix).ok_or(DecodeError::InvalidData)?;
+    decode(data, context)
 }
 
 impl<'a> Decoder<'a> {
