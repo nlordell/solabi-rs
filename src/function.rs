@@ -14,7 +14,7 @@ use std::{
 };
 
 /// A function selector type.
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
 pub struct Selector(pub [u8; 4]);
 
 impl AsRef<[u8]> for Selector {
@@ -63,7 +63,7 @@ impl Debug for Selector {
 
 /// Recent Solidity ABI version support function pointers. They are encoded as
 /// a contract address and a selector packed into a `bytes24`.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct ExternalFunction {
     /// The contract address that will be used when calling this function
     /// pointer.
@@ -80,7 +80,7 @@ impl Primitive for ExternalFunction {
         word
     }
 
-    fn cast(word: Word) -> Self {
+    fn from_word(word: Word) -> Self {
         let mut address = Address::default();
         let mut selector = Selector(Default::default());
         address.copy_from_slice(&word[..20]);

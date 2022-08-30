@@ -198,7 +198,7 @@ macro_rules! impl_indexed {
             fn from_topics(topics: &Topics) -> Result<(Word, Self), IndexError> {
                 let mut topics = topics.iter().copied();
                 let topic0 = topics.next().ok_or(IndexError)?;
-                $(let $t = $t::cast(topics.next().ok_or(IndexError)?);)*
+                $(let $t = $t::from_word(topics.next().ok_or(IndexError)?);)*
                 Ok((topic0, ($($t,)*)))
             }
 
@@ -218,7 +218,7 @@ macro_rules! impl_indexed {
         {
             fn from_topics_anonymous(topics: &Topics) -> Result<Self, IndexError> {
                 let mut topics = topics.iter().copied();
-                $(let $t = $t::cast(topics.next().ok_or(IndexError)?);)*
+                $(let $t = $t::from_word(topics.next().ok_or(IndexError)?);)*
                 Ok(($($t,)*))
             }
 

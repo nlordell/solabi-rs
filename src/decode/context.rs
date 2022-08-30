@@ -8,7 +8,7 @@ use crate::function::Selector;
 /// Represents a decodable type requing runtime context for decoding.
 pub trait DecodeContext: Sized {
     /// Context for decoding.
-    type Context;
+    type Context: ?Sized;
 
     /// Returns `true` if the type is dynamic.
     fn is_dynamic_context(context: &Self::Context) -> bool;

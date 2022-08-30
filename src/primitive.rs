@@ -12,13 +12,13 @@ pub trait Primitive {
     /// Converts a primitive type to an Ethereum 32-byte word.
     fn to_word(&self) -> Word;
 
-    /// Casts an Ethereum 32-byte word as the type.
+    /// Converts an Ethereum 32-byte word as the type.
     ///
     /// Note that this should implement casting semantics. In other words a word
     /// doesn't necessarily round trip as some bytes may be truncated during
     /// conversion. For example, `0xfff..fff` converted to a `uint8` will result
     /// in `0xff` and when converted back to a word would yield `0x000..0ff`.
-    fn cast(word: Word) -> Self;
+    fn from_word(word: Word) -> Self;
 }
 
 macro_rules! impl_primitive_for_i256 {
@@ -28,7 +28,7 @@ macro_rules! impl_primitive_for_i256 {
                 self.to_be_bytes()
             }
 
-            fn cast(word: Word) -> Self {
+            fn from_word(word: Word) -> Self {
                 Self::from_be_bytes(word)
             }
         }
@@ -47,8 +47,8 @@ macro_rules! impl_primitive_for_integer {
                 self.as_i256().to_word()
             }
 
-            fn cast(word: Word) -> Self {
-                *I256::cast(word).low() as _
+            fn from_word(word: Word) -> Self {
+                *I256::from_word(word).low() as _
             }
         }
     )*};
@@ -67,7 +67,7 @@ impl Primitive for bool {
         ]
     }
 
-    fn cast(word: Word) -> Self {
+    fn from_word(word: Word) -> Self {
         word != [0; 32]
     }
 }
@@ -79,7 +79,7 @@ impl Primitive for Address {
         word
     }
 
-    fn cast(word: Word) -> Self {
+    fn from_word(word: Word) -> Self {
         Self::from_slice(&word[12..])
     }
 }

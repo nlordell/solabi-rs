@@ -102,7 +102,7 @@ macro_rules! impl_primitive_for_fixed_bytes {
                 word
             }
 
-            fn cast(word: Word) -> Self {
+            fn from_word(word: Word) -> Self {
                 let mut bytes = Self::default();
                 bytes.copy_from_slice(&word[..$n]);
                 bytes

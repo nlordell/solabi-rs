@@ -3,14 +3,18 @@
 
 use super::{Decodable, Encodable, Value, ValueKind};
 use crate::{
-    abi::{ConstructorDescriptor, ErrorDescriptor, FunctionDescriptor},
+    abi::{ConstructorDescriptor, ErrorDescriptor, EventDescriptor, FunctionDescriptor},
     decode::{
         context::{self, DecodeContext},
         DecodeError, Decoder,
     },
     encode::{Encode, Encoder, Size},
     function::Selector,
+    log::{Log, Topics},
+    primitive::Word,
 };
+use sha3::{Digest as _, Keccak256};
+use std::borrow::Cow;
 
 /// An error indicating that some value data is not of the correct type.
 #[derive(Debug)]
@@ -45,26 +49,23 @@ impl FunctionEncoder {
     /// Encodes a function call for the specified parameters.
     pub fn encode_params(&self, params: &[Value]) -> Result<Vec<u8>, ValueKindError> {
         of_kind(params, &self.params)?;
-        Ok(crate::encode_with_selector(
-            self.selector,
-            &TupleRef(params),
-        ))
+        Ok(Value::encode_tuple_with_selector(self.selector, params))
     }
 
     /// Decodes a function call into its parameters.
     pub fn decode_params(&self, data: &[u8]) -> Result<Vec<Value>, DecodeError> {
-        Ok(context::decode_with_selector::<Tuple>(self.selector, data, &self.params)?.0)
+        Value::decode_tuple_with_selector(&self.params, self.selector, data)
     }
 
     /// Encodes function return data.
     pub fn encode_returns(&self, returns: &[Value]) -> Result<Vec<u8>, ValueKindError> {
         of_kind(returns, &self.returns)?;
-        Ok(crate::encode(&TupleRef(returns)))
+        Ok(Value::encode_tuple(returns))
     }
 
     /// Decodes function return data.
     pub fn decode_returns(&self, data: &[u8]) -> Result<Vec<Value>, DecodeError> {
-        Ok(context::decode::<Tuple>(data, &self.returns)?.0)
+        Value::decode_tuple(&self.returns, data)
     }
 }
 
@@ -91,23 +92,163 @@ impl ConstructorEncoder {
     /// Encodes a contract deployment for the specified parameters.
     pub fn encode(&self, params: &[Value]) -> Result<Vec<u8>, ValueKindError> {
         of_kind(params, &self.params)?;
-        Ok(crate::encode_with_prefix(&self.code, &TupleRef(params)))
+        Ok(Value::encode_tuple_with_prefix(&self.code, params))
     }
 
     /// Encodes a contract deployment parameters without any code.
     pub fn encode_params(&self, params: &[Value]) -> Result<Vec<u8>, ValueKindError> {
         of_kind(params, &self.params)?;
-        Ok(crate::encode(&TupleRef(params)))
+        Ok(Value::encode_tuple(params))
     }
 
     /// Decodes the contract deployment parameters from the specified calldata.
     pub fn decode(&self, data: &[u8]) -> Result<Vec<Value>, DecodeError> {
-        Ok(context::decode_with_prefix::<Tuple>(&self.code, data, &self.params)?.0)
+        Value::decode_tuple_with_prefix(&self.params, &self.code, data)
     }
 
     /// Decodes the contract deployment parameters without any code.
     pub fn decode_params(&self, data: &[u8]) -> Result<Vec<Value>, DecodeError> {
-        Ok(context::decode::<Tuple>(data, &self.params)?.0)
+        Value::decode_tuple(&self.params, data)
+    }
+}
+
+/// An event encoder.
+pub struct EventEncoder {
+    selector: Option<Word>,
+    fields: Vec<(bool, ValueKind)>,
+}
+
+impl EventEncoder {
+    /// Creates a new error encoder from a selector.
+    pub fn new(descriptor: &EventDescriptor) -> Result<Self, ValueKindError> {
+        let selector = descriptor.selector();
+        if selector.iter().count() + descriptor.inputs.iter().filter(|i| i.indexed).count()
+            > Topics::MAX_LEN
+        {
+            return Err(ValueKindError);
+        }
+
+        Ok(Self {
+            selector,
+            fields: descriptor
+                .inputs
+                .iter()
+                .map(|i| (i.indexed, i.field.kind.clone()))
+                .collect(),
+        })
+    }
+
+    /// Encodes a Solidity error for the specified data.
+    pub fn encode(&self, fields: &[Value]) -> Result<Log<'static>, ValueKindError> {
+        of_kind(fields, self.fields.iter().map(|(_, kind)| kind))?;
+        let encoding = EncodeLog(&self.fields, fields);
+        let data = crate::encode(&encoding);
+
+        let mut topics = Topics::default();
+        if let Some(selector) = self.selector {
+            topics.push(selector)
+        }
+
+        let (head, _) = encoding.size().word_count();
+        let mut tail_offset = head;
+
+        for ((indexed, _), value) in self.fields.iter().zip(fields) {
+            if !indexed {
+                if let Size::Dynamic(head, tail) = value.size() {
+                    tail_offset += head + tail;
+                }
+                continue;
+            }
+
+            if let Some(word) = value.to_word() {
+                topics.push(word);
+            } else {
+                let count = value.size().total_word_count();
+                let digest = hash_data(&data, tail_offset, count);
+                topics.push(digest);
+            }
+        }
+
+        Ok(Log {
+            topics,
+            data: Cow::Owned(data),
+        })
+    }
+
+    /// Decodes a Solidity error from the return bytes call into its data.
+    pub fn decode(&self, log: &Log) -> Result<Vec<Value>, DecodeError> {
+        let mut topics = log.topics.into_iter();
+        if let Some(selector) = self.selector {
+            if !matches!(topics.next(), Some(topic) if topic == selector) {
+                return Err(DecodeError::InvalidData);
+            }
+        }
+
+        let mut fields = context::decode::<DecodeLog>(&log.data, &self.fields)?.0;
+        for (((_, kind), value), topic) in self
+            .fields
+            .iter()
+            .zip(&mut fields)
+            .filter(|((indexed, kind), _)| *indexed && kind.is_primitive())
+            .zip(topics)
+        {
+            *value = Value::from_word(kind, topic).unwrap();
+        }
+
+        Ok(fields)
+    }
+}
+
+/// Internal type for encoding log data, skipping indexed fields.
+struct EncodeLog<'a>(&'a [(bool, ValueKind)], &'a [Value]);
+
+impl EncodeLog<'_> {
+    fn values(&self) -> impl Iterator<Item = &'_ Value> + '_ {
+        self.0
+            .iter()
+            .zip(self.1)
+            .filter(|((indexed, kind), _)| !indexed || !kind.is_primitive())
+            .map(|(_, value)| value)
+    }
+}
+
+impl Encode for EncodeLog<'_> {
+    fn size(&self) -> Size {
+        Size::tuple(self.values().map(|item| Encodable(item).size()))
+    }
+
+    fn encode(&self, encoder: &mut Encoder) {
+        for value in self.values() {
+            encoder.write(&Encodable(value))
+        }
+    }
+}
+
+/// Internal type for decoding log data, skipping indexed fields.
+struct DecodeLog(Vec<Value>);
+
+impl DecodeContext for DecodeLog {
+    type Context = [(bool, ValueKind)];
+
+    fn is_dynamic_context(context: &Self::Context) -> bool {
+        context
+            .iter()
+            .any(|(_, kind)| Decodable::is_dynamic_context(kind))
+    }
+
+    fn decode_context(decoder: &mut Decoder, context: &Self::Context) -> Result<Self, DecodeError> {
+        Ok(Self(
+            context
+                .iter()
+                .map(|(indexed, kind)| {
+                    if *indexed && kind.is_primitive() {
+                        Ok(Value::default(kind))
+                    } else {
+                        Ok(decoder.read_context::<Decodable>(kind)?.0)
+                    }
+                })
+                .collect::<Result<_, _>>()?,
+        ))
     }
 }
 
@@ -129,55 +270,21 @@ impl ErrorEncoder {
     /// Encodes a Solidity error for the specified data.
     pub fn encode(&self, fields: &[Value]) -> Result<Vec<u8>, ValueKindError> {
         of_kind(fields, &self.fields)?;
-        Ok(crate::encode_with_selector(
-            self.selector,
-            &TupleRef(fields),
-        ))
+        Ok(Value::encode_tuple_with_selector(self.selector, fields))
     }
 
     /// Decodes a Solidity error from the return bytes call into its data.
     pub fn decode(&self, data: &[u8]) -> Result<Vec<Value>, DecodeError> {
-        Ok(context::decode_with_selector::<Tuple>(self.selector, data, &self.fields)?.0)
+        Value::decode_tuple_with_selector(&self.fields, self.selector, data)
     }
 }
 
-/// An internal type to facilitate encoding tuples by slice of their fields.
-struct TupleRef<'a>(&'a [Value]);
-
-impl Encode for TupleRef<'_> {
-    fn size(&self) -> Size {
-        Size::tuple(self.0.iter().map(|item| Encodable(item).size()))
-    }
-
-    fn encode(&self, encoder: &mut Encoder) {
-        for value in self.0 {
-            encoder.write(&Encodable(value))
-        }
-    }
-}
-
-/// An internal type used to facilisate decoding tuples without having to unwrap
-/// the parent `Value`.
-struct Tuple(Vec<Value>);
-
-impl DecodeContext for Tuple {
-    type Context = Vec<ValueKind>;
-
-    fn is_dynamic_context(context: &Self::Context) -> bool {
-        context.iter().any(Decodable::is_dynamic_context)
-    }
-
-    fn decode_context(decoder: &mut Decoder, context: &Self::Context) -> Result<Self, DecodeError> {
-        Ok(Self(
-            context
-                .iter()
-                .map(|kind| Ok(decoder.read_context::<Decodable>(kind)?.0))
-                .collect::<Result<_, _>>()?,
-        ))
-    }
-}
-
-fn of_kind(values: &[Value], kinds: &[ValueKind]) -> Result<(), ValueKindError> {
+fn of_kind<'a, I>(values: &'a [Value], kinds: I) -> Result<(), ValueKindError>
+where
+    I: IntoIterator<Item = &'a ValueKind>,
+    I::IntoIter: ExactSizeIterator,
+{
+    let kinds = kinds.into_iter();
     if values.len() != kinds.len()
         || values
             .iter()
@@ -187,6 +294,12 @@ fn of_kind(values: &[Value], kinds: &[ValueKind]) -> Result<(), ValueKindError> 
         return Err(ValueKindError);
     }
     Ok(())
+}
+
+fn hash_data(data: &[u8], offset: usize, count: usize) -> Word {
+    let mut hasher = Keccak256::new();
+    hasher.update(&data[offset * 32..(offset + count) * 32]);
+    hasher.finalize().into()
 }
 
 #[cfg(test)]
@@ -258,19 +371,74 @@ mod tests {
         assert_eq!(encoder.decode_params(&data).unwrap(), params);
     }
 
-    /*
     #[test]
-    fn event_selector() {
+    fn transfer_event() {
         let event = EventDescriptor::parse_declaration(
             "event Transfer(address indexed to, address indexed from, uint256 value)",
         )
         .unwrap();
-        assert_eq!(
-            event.selector().unwrap(),
-            hex!("ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"),
-        );
+        let encoder = EventEncoder::new(&event).unwrap();
+
+        let fields = [
+            Value::Address(address!("0x0101010101010101010101010101010101010101")),
+            Value::Address(address!("0x0202020202020202020202020202020202020202")),
+            Value::Uint(Uint::new(256, U256::new(4_200_000_000_000_000_000)).unwrap()),
+        ];
+
+        let log = Log {
+            topics: Topics::from([
+                event.selector().unwrap(),
+                hex!("0000000000000000000000000101010101010101010101010101010101010101"),
+                hex!("0000000000000000000000000202020202020202020202020202020202020202"),
+            ]),
+            data: hex!("0000000000000000000000000000000000000000000000003a4965bf58a40000")[..]
+                .into(),
+        };
+
+        assert_eq!(encoder.encode(&fields).unwrap(), log);
+        assert_eq!(encoder.decode(&log).unwrap(), fields);
     }
-    */
+
+    #[test]
+    fn anonymous_event_with_indexed_dynamic_field() {
+        let event =
+            EventDescriptor::parse_declaration("event Log(uint, string indexed, uint) anonymous")
+                .unwrap();
+        let encoder = EventEncoder::new(&event).unwrap();
+
+        let fields = [
+            Value::Uint(Uint::new(256, U256::new(1)).unwrap()),
+            Value::String("hello world".to_owned()),
+            Value::Uint(Uint::new(256, U256::new(2)).unwrap()),
+        ];
+
+        let log = Log {
+            topics: Topics::from([keccak256(&hex!(
+                "000000000000000000000000000000000000000000000000000000000000000b
+                 68656c6c6f20776f726c64000000000000000000000000000000000000000000"
+            ))]),
+            data: hex!(
+                "0000000000000000000000000000000000000000000000000000000000000001
+                 0000000000000000000000000000000000000000000000000000000000000060
+                 0000000000000000000000000000000000000000000000000000000000000002
+                 000000000000000000000000000000000000000000000000000000000000000b
+                 68656c6c6f20776f726c64000000000000000000000000000000000000000000"
+            )[..]
+                .into(),
+        };
+
+        assert_eq!(encoder.encode(&fields).unwrap(), log);
+        assert_eq!(encoder.decode(&log).unwrap(), fields);
+
+        // Note that we don't actually verify the log topics for dynamic data!
+        let log = Log {
+            topics: Topics::from([hex!(
+                "0000000000000000000000000000000000000000000000000000000000000000"
+            )]),
+            ..log
+        };
+        assert_eq!(encoder.decode(&log).unwrap(), fields);
+    }
 
     #[test]
     fn revert_error() {
@@ -288,5 +456,11 @@ mod tests {
 
         assert_eq!(encoder.encode(&fields).unwrap(), data);
         assert_eq!(encoder.decode(&data).unwrap(), fields);
+    }
+
+    fn keccak256(data: &[u8]) -> Word {
+        let mut hasher = Keccak256::new();
+        hasher.update(data);
+        hasher.finalize().into()
     }
 }

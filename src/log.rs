@@ -40,10 +40,13 @@ impl Log<'_> {
 #[derive(Clone, Copy)]
 pub struct Topics {
     len: usize,
-    values: [MaybeUninit<Word>; 4],
+    values: [MaybeUninit<Word>; Topics::MAX_LEN],
 }
 
 impl Topics {
+    /// Returns the maximum length of topics.
+    pub const MAX_LEN: usize = 4;
+
     /// Returns the topics as a slice of words.
     pub fn as_slice(&self) -> &[Word] {
         // SAFETY: We garantee that the first `self.len` words are initialized.
@@ -55,6 +58,27 @@ impl Topics {
     /// Returns a mutable slice of topics.
     pub fn as_slice_mut(&mut self) -> &mut [Word] {
         unsafe { &mut *(&mut self.values[..self.len] as *mut [_] as *mut [Word]) }
+    }
+
+    /// Tries to append a topic.
+    ///
+    /// Returns `Err` if the topics are full.
+    pub fn try_push(&mut self, topic: Word) -> Result<(), Word> {
+        if self.len >= Topics::MAX_LEN {
+            return Err(topic);
+        }
+        self.values[self.len].write(topic);
+        self.len += 1;
+        Ok(())
+    }
+
+    /// Appends a topic.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the topics are full.
+    pub fn push(&mut self, topic: Word) {
+        self.try_push(topic).expect("topics are full");
     }
 }
 

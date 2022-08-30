@@ -1,6 +1,7 @@
 //! Module containing dynamic Solidity value.
 
 mod encoders;
+mod tuple;
 
 pub use self::encoders::*;
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
     },
     encode::{BufferSizeError, Encode, Encoder, Size},
     function::{ExternalFunction, Selector},
-    primitive::Word,
+    primitive::{Primitive, Word},
 };
 use ethaddr::Address;
 use ethnum::{I256, U256};
@@ -52,6 +53,28 @@ pub enum Value {
 }
 
 impl Value {
+    /// Returns the default value for the specified kind.
+    pub fn default(kind: &ValueKind) -> Self {
+        match kind {
+            ValueKind::Int(bit_width) => Self::Int(Int(*bit_width, Default::default())),
+            ValueKind::Uint(bit_width) => Self::Uint(Uint(*bit_width, Default::default())),
+            ValueKind::Address => Self::Address(Default::default()),
+            ValueKind::Bool => Self::Bool(Default::default()),
+            ValueKind::FixedBytes(byte_length) => {
+                Self::FixedBytes(FixedBytes(*byte_length, Default::default()))
+            }
+            ValueKind::Function => Self::Function(Default::default()),
+            ValueKind::FixedArray(n, kind) => Self::FixedArray(Array(
+                *kind.clone(),
+                (0..*n).map(|_| Value::default(kind)).collect(),
+            )),
+            ValueKind::Bytes => Self::Bytes(Default::default()),
+            ValueKind::String => Self::String(Default::default()),
+            ValueKind::Array(kind) => Self::Array(Array(*kind.clone(), Default::default())),
+            ValueKind::Tuple(fields) => Self::Tuple(fields.iter().map(Value::default).collect()),
+        }
+    }
+
     /// Returns the kind for the value.
     pub fn kind(&self) -> ValueKind {
         match self {
@@ -96,6 +119,38 @@ impl Value {
         }
     }
 
+    /// Returns true if the value is a primitive type.
+    pub fn to_word(&self) -> Option<Word> {
+        match self {
+            Value::Int(a) => Some(a.to_word()),
+            Value::Uint(a) => Some(a.to_word()),
+            Value::Address(a) => Some(a.to_word()),
+            Value::Bool(a) => Some(a.to_word()),
+            Value::FixedBytes(a) => Some(a.into_word()),
+            Value::Function(a) => Some(a.to_word()),
+            _ => None,
+        }
+    }
+
+    /// Casts a word into a value by kind.
+    pub fn from_word(kind: &ValueKind, word: Word) -> Option<Self> {
+        match kind {
+            ValueKind::Int(bit_width) => {
+                Some(Self::Int(Int(*bit_width, Primitive::from_word(word))))
+            }
+            ValueKind::Uint(bit_width) => {
+                Some(Self::Uint(Uint(*bit_width, Primitive::from_word(word))))
+            }
+            ValueKind::Address => Some(Self::Address(Primitive::from_word(word))),
+            ValueKind::Bool => Some(Self::Bool(Primitive::from_word(word))),
+            ValueKind::FixedBytes(byte_length) => {
+                Some(Self::FixedBytes(FixedBytes(*byte_length, word)))
+            }
+            ValueKind::Function => Some(Self::Function(Primitive::from_word(word))),
+            _ => None,
+        }
+    }
+
     /// Returns the encoded size of the value.
     pub fn size(&self) -> Size {
         Encodable(self).size()
@@ -116,6 +171,13 @@ impl Value {
     /// See [`Value::encode`] for more details.
     pub fn encode_with_selector(&self, selector: Selector) -> Vec<u8> {
         crate::encode_with_selector(selector, &Encodable(self))
+    }
+
+    /// Encodes a `Value` with a prefix.
+    ///
+    /// See [`Value::encode`] for more details.
+    pub fn encode_with_prefix(&self, prefix: &[u8]) -> Vec<u8> {
+        crate::encode_with_prefix(prefix, &Encodable(self))
     }
 
     /// Encodes a `Value` to the specified buffer.
@@ -142,6 +204,17 @@ impl Value {
         bytes: &[u8],
     ) -> Result<Self, DecodeError> {
         Ok(context::decode_with_selector::<Decodable>(selector, bytes, kind)?.0)
+    }
+
+    /// Decodes a `Value` from data with an expected byte prefix.
+    ///
+    /// See [`Value::decode`] for more details.
+    pub fn decode_with_prefix(
+        kind: &ValueKind,
+        prefix: &[u8],
+        bytes: &[u8],
+    ) -> Result<Self, DecodeError> {
+        Ok(context::decode_with_prefix::<Decodable>(prefix, bytes, kind)?.0)
     }
 }
 
@@ -291,6 +364,19 @@ impl ValueKind {
 
     /// The value kind used for enums.
     pub const ENUM: Self = Self::Uint(BitWidth::ENUM);
+
+    /// Returns true if the value kind is a primitive type.
+    pub fn is_primitive(&self) -> bool {
+        matches!(
+            self,
+            Self::Int(_)
+                | Self::Uint(_)
+                | Self::Address
+                | Self::Bool
+                | Self::FixedBytes(_)
+                | Self::Function
+        )
+    }
 }
 
 impl Display for ValueKind {
@@ -567,6 +653,11 @@ impl FixedBytes {
     pub fn byte_length(&self) -> ByteLength {
         // Already verified by the constructor.
         ByteLength(self.len())
+    }
+
+    /// Returns the fixed bytes as a word.
+    pub fn into_word(self) -> Word {
+        self.1
     }
 }
 
