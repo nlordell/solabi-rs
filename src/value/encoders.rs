@@ -13,7 +13,6 @@ use crate::{
     log::{Log, Topics},
     primitive::Word,
 };
-use sha3::{Digest as _, Keccak256};
 use std::borrow::Cow;
 
 /// An error indicating that some value data is not of the correct type.
@@ -149,24 +148,13 @@ impl EventEncoder {
             topics.push(selector)
         }
 
-        let (head, _) = encoding.size().word_count();
-        let mut tail_offset = head;
-
-        for ((indexed, _), value) in self.fields.iter().zip(fields) {
-            if !indexed {
-                if let Size::Dynamic(head, tail) = value.size() {
-                    tail_offset += head + tail;
-                }
-                continue;
-            }
-
-            if let Some(word) = value.to_word() {
-                topics.push(word);
-            } else {
-                let count = value.size().total_word_count();
-                let digest = hash_data(&data, tail_offset, count);
-                topics.push(digest);
-            }
+        for (_, value) in self
+            .fields
+            .iter()
+            .zip(fields)
+            .filter(|((indexed, _), _)| *indexed)
+        {
+            topics.push(value.to_topic());
         }
 
         Ok(Log {
@@ -207,7 +195,7 @@ impl EncodeLog<'_> {
         self.0
             .iter()
             .zip(self.1)
-            .filter(|((indexed, kind), _)| !indexed || !kind.is_primitive())
+            .filter(|((indexed, _), _)| !indexed)
             .map(|(_, value)| value)
     }
 }
@@ -233,6 +221,7 @@ impl DecodeContext for DecodeLog {
     fn is_dynamic_context(context: &Self::Context) -> bool {
         context
             .iter()
+            .filter(|(indexed, _)| !indexed)
             .any(|(_, kind)| Decodable::is_dynamic_context(kind))
     }
 
@@ -241,7 +230,7 @@ impl DecodeContext for DecodeLog {
             context
                 .iter()
                 .map(|(indexed, kind)| {
-                    if *indexed && kind.is_primitive() {
+                    if *indexed {
                         Ok(Value::default(kind))
                     } else {
                         Ok(decoder.read_context::<Decodable>(kind)?.0)
@@ -296,16 +285,10 @@ where
     Ok(())
 }
 
-fn hash_data(data: &[u8], offset: usize, count: usize) -> Word {
-    let mut hasher = Keccak256::new();
-    hasher.update(&data[offset * 32..(offset + count) * 32]);
-    hasher.finalize().into()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::Uint;
+    use crate::value::{Array, Uint};
     use ethaddr::address;
     use ethnum::U256;
     use hex_literal::hex;
@@ -401,42 +384,61 @@ mod tests {
 
     #[test]
     fn anonymous_event_with_indexed_dynamic_field() {
-        let event =
-            EventDescriptor::parse_declaration("event Log(uint, string indexed, uint) anonymous")
-                .unwrap();
+        let event = EventDescriptor::parse_declaration(
+            r#"
+            event Log(
+                uint,
+                string indexed,
+                (uint, (bool, bytes))[] indexed,
+                uint
+            ) anonymous
+            "#,
+        )
+        .unwrap();
         let encoder = EventEncoder::new(&event).unwrap();
 
-        let fields = [
+        let mut fields = [
             Value::Uint(Uint::new(256, U256::new(1)).unwrap()),
             Value::String("hello world".to_owned()),
+            Value::Array(
+                Array::from_values(vec![
+                    Value::Tuple(vec![
+                        Value::Uint(Uint::new(256, U256::MAX - 1).unwrap()),
+                        Value::Tuple(vec![
+                            Value::Bool(true),
+                            Value::Bytes(hex!("010203").to_vec()),
+                        ]),
+                    ]),
+                    Value::Tuple(vec![
+                        Value::Uint(Uint::new(256, U256::MAX - 2).unwrap()),
+                        Value::Tuple(vec![
+                            Value::Bool(true),
+                            Value::Bytes(hex!("040506").to_vec()),
+                        ]),
+                    ]),
+                ])
+                .unwrap(),
+            ),
             Value::Uint(Uint::new(256, U256::new(2)).unwrap()),
         ];
 
         let log = Log {
-            topics: Topics::from([keccak256(&hex!(
-                "000000000000000000000000000000000000000000000000000000000000000b
-                 68656c6c6f20776f726c64000000000000000000000000000000000000000000"
-            ))]),
+            topics: Topics::from([
+                hex!("47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad"),
+                hex!("6b8a0e75eceddd0e7d4d0413a720bce2cb899061e362357db170c49c5563672f"),
+            ]),
             data: hex!(
                 "0000000000000000000000000000000000000000000000000000000000000001
-                 0000000000000000000000000000000000000000000000000000000000000060
-                 0000000000000000000000000000000000000000000000000000000000000002
-                 000000000000000000000000000000000000000000000000000000000000000b
-                 68656c6c6f20776f726c64000000000000000000000000000000000000000000"
+                 0000000000000000000000000000000000000000000000000000000000000002"
             )[..]
                 .into(),
         };
 
         assert_eq!(encoder.encode(&fields).unwrap(), log);
-        assert_eq!(encoder.decode(&log).unwrap(), fields);
 
-        // Note that we don't actually verify the log topics for dynamic data!
-        let log = Log {
-            topics: Topics::from([hex!(
-                "0000000000000000000000000000000000000000000000000000000000000000"
-            )]),
-            ..log
-        };
+        // Note that indexed dynamic fields are actually recoverable.
+        fields[1] = Value::default(&fields[1].kind());
+        fields[2] = Value::default(&fields[2].kind());
         assert_eq!(encoder.decode(&log).unwrap(), fields);
     }
 
@@ -456,11 +458,5 @@ mod tests {
 
         assert_eq!(encoder.encode(&fields).unwrap(), data);
         assert_eq!(encoder.decode(&data).unwrap(), fields);
-    }
-
-    fn keccak256(data: &[u8]) -> Word {
-        let mut hasher = Keccak256::new();
-        hasher.update(data);
-        hasher.finalize().into()
     }
 }

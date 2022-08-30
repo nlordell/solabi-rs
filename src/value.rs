@@ -15,6 +15,7 @@ use crate::{
 };
 use ethaddr::Address;
 use ethnum::{I256, U256};
+use sha3::{Digest as _, Keccak256};
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Deref, Shl, Shr},
@@ -119,7 +120,7 @@ impl Value {
         }
     }
 
-    /// Returns true if the value is a primitive type.
+    /// Casts the value to a word if it is a primitive type.
     pub fn to_word(&self) -> Option<Word> {
         match self {
             Value::Int(a) => Some(a.to_word()),
@@ -148,6 +149,55 @@ impl Value {
             }
             ValueKind::Function => Some(Self::Function(Primitive::from_word(word))),
             _ => None,
+        }
+    }
+
+    /// Returns the topic value for the specified value.
+    pub fn to_topic(&self) -> Word {
+        if let Some(word) = self.to_word() {
+            return word;
+        }
+
+        let mut hasher = Keccak256::new();
+
+        // For some odd reason, indexed bytes and strings behave differently
+        // when they are alone than when they are elements in an array or fields
+        // in a tuple...
+        match self {
+            Value::Bytes(a) => hasher.update(a),
+            Value::String(a) => hasher.update(a),
+            _ => self.hash_topic(&mut hasher),
+        }
+
+        hasher.finalize().into()
+    }
+
+    /// Writes packed value representation to the specified hasher.
+    fn hash_topic(&self, hasher: &mut Keccak256) {
+        let hash_array = |a: &[Self], hasher: &mut Keccak256| {
+            for i in a {
+                i.hash_topic(hasher)
+            }
+        };
+        static ZEROS: Word = [0; 32];
+        let hash_bytes = |a: &[u8], hasher: &mut Keccak256| {
+            hasher.update(a);
+
+            let padding = (32 - (a.len() % 32)) % 32;
+            hasher.update(&ZEROS[..padding]);
+        };
+
+        match self {
+            Value::Int(a) => hasher.update(a.to_word()),
+            Value::Uint(a) => hasher.update(a.to_word()),
+            Value::Address(a) => hasher.update(a.to_word()),
+            Value::Bool(a) => hasher.update(a.to_word()),
+            Value::FixedBytes(a) => hasher.update(a.into_word()),
+            Value::Function(a) => hasher.update(a.to_word()),
+            Value::FixedArray(a) | Value::Array(a) => hash_array(&**a, hasher),
+            Value::Bytes(a) => hash_bytes(a, hasher),
+            Value::String(a) => hash_bytes(a.as_bytes(), hasher),
+            Value::Tuple(a) => hash_array(&**a, hasher),
         }
     }
 
