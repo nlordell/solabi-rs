@@ -1,6 +1,10 @@
 //! Module implementing an EVM log datatype.
 
-use crate::primitive::Word;
+use crate::{
+    bytes::Bytes,
+    primitive::{Primitive, Word},
+};
+use sha3::{Digest as _, Keccak256};
 use std::{
     array::TryFromSliceError,
     borrow::{Borrow, BorrowMut, Cow},
@@ -304,3 +308,303 @@ macro_rules! impl_array {
 }
 
 impl_array! { 0, 1, 2, 3, 4 }
+
+/// A trait for converting values to topics.
+pub trait ToTopic {
+    /// Returns the value as a EVM log topic.
+    fn to_topic(&self) -> Word;
+}
+
+/// A trait for converting values from topics.
+pub trait FromTopic {
+    /// Returns the value as a EVM log topic.
+    fn from_topic(topic: Word) -> Self;
+}
+
+/// A trait for hashing fields for topic computation in dynamic types.
+pub trait TopicHash {
+    /// Update the hasher with topic values.
+    fn update_hash(&self, hasher: &mut Keccak256);
+}
+
+impl<T> ToTopic for T
+where
+    T: Primitive,
+{
+    fn to_topic(&self) -> Word {
+        self.to_word()
+    }
+}
+
+impl<T> FromTopic for T
+where
+    T: Primitive,
+{
+    fn from_topic(topic: Word) -> Self {
+        Self::from_word(topic)
+    }
+}
+
+impl<T> TopicHash for T
+where
+    T: Primitive,
+{
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        hasher.update(self.to_word());
+    }
+}
+
+impl<T> ToTopic for Cow<'_, T>
+where
+    T: ToTopic + ToOwned + ?Sized,
+{
+    fn to_topic(&self) -> Word {
+        self.as_ref().to_topic()
+    }
+}
+
+impl<T> FromTopic for Cow<'_, T>
+where
+    T: ToOwned + ?Sized,
+    T::Owned: FromTopic,
+{
+    fn from_topic(topic: Word) -> Self {
+        Cow::Owned(T::Owned::from_topic(topic))
+    }
+}
+
+impl<T> TopicHash for Cow<'_, T>
+where
+    T: TopicHash + ToOwned + ?Sized,
+{
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        self.as_ref().update_hash(hasher);
+    }
+}
+
+macro_rules! impl_topic_for_ref {
+    (to_topic) => {
+        fn to_topic(&self) -> Word {
+            (**self).to_topic()
+        }
+    };
+    (update_hash) => {
+        fn update_hash(&self, hasher: &mut Keccak256) {
+            (**self).update_hash(hasher)
+        }
+    };
+}
+
+impl<T, const N: usize> ToTopic for [T; N]
+where
+    T: TopicHash,
+{
+    fn to_topic(&self) -> Word {
+        self.as_slice().to_topic()
+    }
+}
+
+impl<T, const N: usize> TopicHash for [T; N]
+where
+    T: TopicHash,
+{
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        self.as_slice().update_hash(hasher)
+    }
+}
+
+impl<T, const N: usize> ToTopic for &'_ [T; N]
+where
+    T: TopicHash,
+{
+    impl_topic_for_ref!(to_topic);
+}
+
+impl<T, const N: usize> TopicHash for &'_ [T; N]
+where
+    T: TopicHash,
+{
+    impl_topic_for_ref!(update_hash);
+}
+
+impl<T> ToTopic for [T]
+where
+    T: TopicHash,
+{
+    fn to_topic(&self) -> Word {
+        let mut hasher = Keccak256::new();
+        self.update_hash(&mut hasher);
+        hasher.finalize().into()
+    }
+}
+
+impl<T> TopicHash for [T]
+where
+    T: TopicHash,
+{
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        for item in self {
+            item.update_hash(hasher);
+        }
+    }
+}
+
+impl<T> ToTopic for &'_ [T]
+where
+    T: TopicHash,
+{
+    impl_topic_for_ref!(to_topic);
+}
+
+impl<T> TopicHash for &'_ [T]
+where
+    T: TopicHash,
+{
+    impl_topic_for_ref!(update_hash);
+}
+
+impl<T> ToTopic for Vec<T>
+where
+    T: TopicHash,
+{
+    fn to_topic(&self) -> Word {
+        self.as_slice().to_topic()
+    }
+}
+
+impl<T> FromTopic for Vec<T> {
+    fn from_topic(_: Word) -> Self {
+        Self::default()
+    }
+}
+
+impl<T> TopicHash for Vec<T>
+where
+    T: TopicHash,
+{
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        self.as_slice().update_hash(hasher)
+    }
+}
+
+impl ToTopic for str {
+    fn to_topic(&self) -> Word {
+        Bytes(self.as_bytes()).to_topic()
+    }
+}
+
+impl TopicHash for str {
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        Bytes(self.as_bytes()).update_hash(hasher)
+    }
+}
+
+impl ToTopic for &'_ str {
+    impl_topic_for_ref!(to_topic);
+}
+
+impl TopicHash for &'_ str {
+    impl_topic_for_ref!(update_hash);
+}
+
+impl ToTopic for String {
+    fn to_topic(&self) -> Word {
+        self.as_str().to_topic()
+    }
+}
+
+impl FromTopic for String {
+    fn from_topic(_: Word) -> Self {
+        Self::default()
+    }
+}
+
+impl TopicHash for String {
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        self.as_str().update_hash(hasher);
+    }
+}
+
+macro_rules! impl_to_from_topic_for_tuple {
+    ($($t:ident),*) => {
+        impl<$($t),*> ToTopic for ($($t,)*)
+        where
+            $($t: TopicHash,)*
+        {
+            fn to_topic(&self) -> Word {
+                let mut hasher = Keccak256::new();
+                self.update_hash(&mut hasher);
+                hasher.finalize().into()
+            }
+        }
+
+        #[allow(clippy::unused_unit)]
+        impl<$($t),*> FromTopic for ($($t,)*)
+        where
+            $($t: FromTopic,)*
+        {
+            fn from_topic(_: Word) -> Self {
+                ($($t::from_topic([0; 32]),)*)
+            }
+        }
+
+        #[allow(non_snake_case, unused_variables)]
+        impl<$($t),*> TopicHash for ($($t,)*)
+        where
+            $($t: TopicHash,)*
+        {
+            fn update_hash(&self, hasher: &mut Keccak256) {
+                let ($($t,)*) = self;
+                $($t.update_hash(hasher);)*
+            }
+        }
+
+        impl<$($t),*> ToTopic for &'_ ($($t,)*)
+        where
+            $($t: TopicHash,)*
+        {
+            impl_topic_for_ref!(to_topic);
+        }
+
+        impl<$($t),*> TopicHash for &'_ ($($t,)*)
+        where
+            $($t: TopicHash,)*
+        {
+            impl_topic_for_ref!(update_hash);
+        }
+    };
+}
+
+impl_to_from_topic_for_tuple! {}
+impl_to_from_topic_for_tuple! { A }
+impl_to_from_topic_for_tuple! { A, B }
+impl_to_from_topic_for_tuple! { A, B, C }
+impl_to_from_topic_for_tuple! { A, B, C, D }
+impl_to_from_topic_for_tuple! { A, B, C, D, E }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE }
+impl_to_from_topic_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF }

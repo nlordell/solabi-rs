@@ -4,10 +4,12 @@ use crate::{
     decode::{Decode, DecodeError, Decoder},
     encode::{Encode, Encoder, Size},
     fmt::Hex,
+    log::{FromTopic, ToTopic, TopicHash},
     primitive::{Primitive, Word},
 };
+use sha3::{Digest, Keccak256};
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, Cow},
     fmt::{self, Debug, Formatter},
     mem,
     ops::{Deref, DerefMut},
@@ -20,15 +22,29 @@ pub struct Bytes<T>(pub T)
 where
     T: ?Sized;
 
-impl Bytes<Vec<u8>> {
-    /// Returns a borrowed `Bytes`.
-    pub fn borrowed(&self) -> &Bytes<[u8]> {
+impl Bytes<[u8]> {
+    /// Returns a borrowed `Bytes` from a slice of bytes.
+    #[allow(clippy::needless_lifetimes)]
+    pub fn new<'a>(bytes: &'a [u8]) -> &'a Bytes<[u8]> {
         // SAFETY: DSTs are a bit of a mystery to me... To my understanding
         // this should be safe because `Bytes` has a transparent layout, so
         // `&[u8]` and `&Bytes<[u8]>`. Either way, we should get a fat pointer
         // with the correct length and pointing to the start of the slice and
         // transmuting between them should be safe.
-        unsafe { mem::transmute(&*self.0) }
+        unsafe { mem::transmute(bytes) }
+    }
+
+    /// Returns a new `Cow::Borrowed` slice of bytes.
+    #[allow(clippy::needless_lifetimes)]
+    pub fn borrowed<'a>(bytes: &'a [u8]) -> Cow<'a, Bytes<[u8]>> {
+        Cow::Borrowed(Self::new(bytes))
+    }
+}
+
+impl Bytes<Vec<u8>> {
+    /// Returns a borrowed `Bytes`.
+    pub fn as_borrowed(&self) -> &Bytes<[u8]> {
+        Bytes::new(&self[..])
     }
 }
 
@@ -81,7 +97,7 @@ where
 
 impl Borrow<Bytes<[u8]>> for Bytes<Vec<u8>> {
     fn borrow(&self) -> &Bytes<[u8]> {
-        self.borrowed()
+        self.as_borrowed()
     }
 }
 
@@ -126,6 +142,18 @@ impl Encode for Bytes<[u8]> {
     }
 }
 
+impl ToTopic for Bytes<[u8]> {
+    fn to_topic(&self) -> Word {
+        Bytes(&self.0).to_topic()
+    }
+}
+
+impl TopicHash for Bytes<[u8]> {
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        Bytes(&self.0).update_hash(hasher);
+    }
+}
+
 impl Encode for Bytes<&'_ [u8]> {
     fn size(&self) -> Size {
         let words = (self.len() + 31) / 32;
@@ -135,6 +163,24 @@ impl Encode for Bytes<&'_ [u8]> {
     fn encode(&self, encoder: &mut Encoder) {
         encoder.write(&self.len());
         encoder.write_bytes(self);
+    }
+}
+
+impl ToTopic for Bytes<&'_ [u8]> {
+    fn to_topic(&self) -> Word {
+        let mut hasher = Keccak256::new();
+        hasher.update(self);
+        hasher.finalize().into()
+    }
+}
+
+impl TopicHash for Bytes<&'_ [u8]> {
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        hasher.update(self);
+
+        static ZEROS: Word = [0; 32];
+        let padding = (32 - (self.len() % 32)) % 32;
+        hasher.update(&ZEROS[..padding]);
     }
 }
 
@@ -156,5 +202,23 @@ impl Decode for Bytes<Vec<u8>> {
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
         let len = decoder.read_size()?;
         Ok(Self(decoder.read_bytes(len)?.to_owned()))
+    }
+}
+
+impl ToTopic for Bytes<Vec<u8>> {
+    fn to_topic(&self) -> Word {
+        Bytes(&self[..]).to_topic()
+    }
+}
+
+impl FromTopic for Bytes<Vec<u8>> {
+    fn from_topic(_: Word) -> Self {
+        Self::default()
+    }
+}
+
+impl TopicHash for Bytes<Vec<u8>> {
+    fn update_hash(&self, hasher: &mut Keccak256) {
+        Bytes(&self[..]).update_hash(hasher);
     }
 }

@@ -5,12 +5,14 @@ mod tuple;
 
 pub use self::encoders::*;
 use crate::{
+    bytes::Bytes,
     decode::{
         context::{self, DecodeContext},
         Decode as _, DecodeError, Decoder,
     },
     encode::{BufferSizeError, Encode, Encoder, Size},
     function::{ExternalFunction, Selector},
+    log::TopicHash as _,
     primitive::{Primitive, Word},
 };
 use ethaddr::Address;
@@ -166,25 +168,18 @@ impl Value {
         match self {
             Value::Bytes(a) => hasher.update(a),
             Value::String(a) => hasher.update(a),
-            _ => self.hash_topic(&mut hasher),
+            _ => self.topic_update_hash(&mut hasher),
         }
 
         hasher.finalize().into()
     }
 
     /// Writes packed value representation to the specified hasher.
-    fn hash_topic(&self, hasher: &mut Keccak256) {
+    fn topic_update_hash(&self, hasher: &mut Keccak256) {
         let hash_array = |a: &[Self], hasher: &mut Keccak256| {
             for i in a {
-                i.hash_topic(hasher)
+                i.topic_update_hash(hasher)
             }
-        };
-        static ZEROS: Word = [0; 32];
-        let hash_bytes = |a: &[u8], hasher: &mut Keccak256| {
-            hasher.update(a);
-
-            let padding = (32 - (a.len() % 32)) % 32;
-            hasher.update(&ZEROS[..padding]);
         };
 
         match self {
@@ -195,8 +190,8 @@ impl Value {
             Value::FixedBytes(a) => hasher.update(a.into_word()),
             Value::Function(a) => hasher.update(a.to_word()),
             Value::FixedArray(a) | Value::Array(a) => hash_array(&**a, hasher),
-            Value::Bytes(a) => hash_bytes(a, hasher),
-            Value::String(a) => hash_bytes(a.as_bytes(), hasher),
+            Value::Bytes(a) => Bytes(&a[..]).update_hash(hasher),
+            Value::String(a) => a.update_hash(hasher),
             Value::Tuple(a) => hash_array(&**a, hasher),
         }
     }

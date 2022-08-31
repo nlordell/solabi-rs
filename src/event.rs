@@ -4,8 +4,8 @@ use crate::{
     decode::{Decode, DecodeError},
     encode::Encode,
     fmt::Hex,
-    log::{Log, Topics},
-    primitive::{Primitive, Word},
+    log::{FromTopic, Log, ToTopic, Topics},
+    primitive::Word,
 };
 use std::{
     error::Error,
@@ -74,10 +74,7 @@ impl<I, D> Debug for EventEncoder<I, D> {
 }
 
 /// An anonymous event encoder.
-pub struct AnonymousEventEncoder<I, D>(PhantomData<*const (I, D)>)
-where
-    I: IndexedAnonymous,
-    D: Encode + Decode;
+pub struct AnonymousEventEncoder<I, D>(PhantomData<*const (I, D)>);
 
 impl<I, D> AnonymousEventEncoder<I, D>
 where
@@ -193,17 +190,20 @@ macro_rules! impl_indexed {
         #[allow(non_snake_case, unused_variables)]
         impl<$($t),*> Indexed for ($($t,)*)
         where
-            $($t: Primitive,)*
+            $($t: ToTopic + FromTopic,)*
         {
             fn from_topics(topics: &Topics) -> Result<(Word, Self), IndexError> {
                 let mut topics = topics.iter().copied();
                 let topic0 = topics.next().ok_or(IndexError)?;
-                $(let $t = $t::from_word(topics.next().ok_or(IndexError)?);)*
+                $(let $t = $t::from_topic(topics.next().ok_or(IndexError)?);)*
+                if topics.next().is_some() {
+                    return Err(IndexError);
+                }
                 Ok((topic0, ($($t,)*)))
             }
 
             fn to_topics(selector: &Word, ($($t,)*): &Self) -> Topics {
-                Topics::from([*selector, $($t.to_word()),*])
+                Topics::from([*selector, $($t.to_topic()),*])
             }
         }
 
@@ -214,17 +214,20 @@ macro_rules! impl_indexed {
         #[allow(non_snake_case, unused_mut, unused_variables)]
         impl<$($t),*> IndexedAnonymous for ($($t,)*)
         where
-            $($t: Primitive,)*
+            $($t: ToTopic + FromTopic,)*
         {
             fn from_topics_anonymous(topics: &Topics) -> Result<Self, IndexError> {
                 let mut topics = topics.iter().copied();
-                $(let $t = $t::from_word(topics.next().ok_or(IndexError)?);)*
+                $(let $t = $t::from_topic(topics.next().ok_or(IndexError)?);)*
+                if topics.next().is_some() {
+                    return Err(IndexError);
+                }
                 Ok(($($t,)*))
             }
 
             fn to_topics_anonymous(&self) -> Topics {
                 let ($($t,)*) = self;
-                Topics::from([$($t.to_word()),*])
+                Topics::from([$($t.to_topic()),*])
             }
         }
     };
@@ -239,9 +242,11 @@ impl_indexed! { anonymous: A, B, C, D }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bytes::Bytes;
     use ethaddr::{address, Address};
     use ethnum::U256;
     use hex_literal::hex;
+    use std::borrow::Cow;
 
     #[test]
     fn transfer_event_roundtrip() {
@@ -265,5 +270,40 @@ mod tests {
 
         assert_eq!(transfer.decode(&log).unwrap(), ((from, to), (value,)),);
         assert_eq!(transfer.encode(&(from, to), &(value,)), log);
+    }
+
+    #[test]
+    fn anonymous_event_with_indexed_dynamic_field() {
+        let anon = AnonymousEventEncoder::<
+            (Cow<str>, Cow<[(U256, (bool, Cow<Bytes<[u8]>>))]>),
+            (U256, U256),
+        >::new();
+
+        let indices = (
+            "hello world".into(),
+            vec![
+                (U256::MAX - 1, (true, Bytes::borrowed(&[1, 2, 3]))),
+                (U256::MAX - 2, (true, Bytes::borrowed(&[4, 5, 6]))),
+            ]
+            .into(),
+        );
+        let fields = (U256::new(1), U256::new(2));
+
+        let log = Log {
+            topics: Topics::from([
+                hex!("47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad"),
+                hex!("6b8a0e75eceddd0e7d4d0413a720bce2cb899061e362357db170c49c5563672f"),
+            ]),
+            data: hex!(
+                "0000000000000000000000000000000000000000000000000000000000000001
+                 0000000000000000000000000000000000000000000000000000000000000002"
+            )[..]
+                .into(),
+        };
+
+        assert_eq!(anon.encode(&indices, &fields), log);
+
+        // Note that indexed dynamic fields are **not** actually recoverable.
+        assert_eq!(anon.decode(&log).unwrap(), (Default::default(), fields));
     }
 }

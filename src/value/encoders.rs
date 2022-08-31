@@ -436,7 +436,7 @@ mod tests {
 
         assert_eq!(encoder.encode(&fields).unwrap(), log);
 
-        // Note that indexed dynamic fields are actually recoverable.
+        // Note that indexed dynamic fields are **not** actually recoverable.
         fields[1] = Value::default(&fields[1].kind());
         fields[2] = Value::default(&fields[2].kind());
         assert_eq!(encoder.decode(&log).unwrap(), fields);
