@@ -1,6 +1,7 @@
 //! Solidity primitive type trait and implementations.
 
 use ethaddr::Address;
+use ethdigest::Digest;
 use ethnum::{AsI256 as _, I256, U256};
 
 /// An Ethereum 32-byte word.
@@ -81,6 +82,16 @@ impl Primitive for Address {
 
     fn from_word(word: Word) -> Self {
         Self::from_slice(&word[12..])
+    }
+}
+
+impl Primitive for Digest {
+    fn to_word(&self) -> Word {
+        **self
+    }
+
+    fn from_word(word: Word) -> Self {
+        Self(word)
     }
 }
 

@@ -7,9 +7,9 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 ethaddr = { version = "0.1", features = ["macros"] }
+ethdigest = { version = "0.1", features = ["keccak", "macros"] }
 ethnum = "1"
 serde = { version = "1", features = ["derive"] }
-sha3 = "0.10"
 
 [dev-dependencies]
 hex-literal = "0.3"

@@ -16,8 +16,8 @@ use crate::{
     primitive::{Primitive, Word},
 };
 use ethaddr::Address;
+use ethdigest::Keccak;
 use ethnum::{I256, U256};
-use sha3::{Digest as _, Keccak256};
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Deref, Shl, Shr},
@@ -160,7 +160,7 @@ impl Value {
             return word;
         }
 
-        let mut hasher = Keccak256::new();
+        let mut hasher = Keccak::new();
 
         // For some odd reason, indexed bytes and strings behave differently
         // when they are alone than when they are elements in an array or fields
@@ -171,12 +171,12 @@ impl Value {
             _ => self.topic_update_hash(&mut hasher),
         }
 
-        hasher.finalize().into()
+        *hasher.finalize()
     }
 
     /// Writes packed value representation to the specified hasher.
-    fn topic_update_hash(&self, hasher: &mut Keccak256) {
-        let hash_array = |a: &[Self], hasher: &mut Keccak256| {
+    fn topic_update_hash(&self, hasher: &mut Keccak) {
+        let hash_array = |a: &[Self], hasher: &mut Keccak| {
             for i in a {
                 i.topic_update_hash(hasher)
             }

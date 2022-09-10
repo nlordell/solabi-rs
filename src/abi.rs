@@ -4,9 +4,9 @@ pub mod declaration;
 mod json;
 
 use crate::{function::Selector, primitive::Word, value::ValueKind};
+use ethdigest::Keccak;
 use serde::{Deserialize, Serialize};
-use sha3::{Digest as _, Keccak256};
-use std::fmt::{self, Display, Formatter, Write};
+use std::fmt::{self, Display, Formatter, Write as _};
 
 /// A Solidity ABI - i.e. a vector of descriptors.
 pub type Abi = Vec<Descriptor>;
@@ -60,9 +60,9 @@ impl FunctionDescriptor {
 
     /// Computes the selector the error type.
     pub fn selector(&self) -> Selector {
-        let mut hasher = Hasher::new();
+        let mut hasher = Keccak::new();
         write!(&mut hasher, "{}", self.canonical()).unwrap();
-        hasher.selector()
+        selector(hasher)
     }
 }
 
@@ -107,9 +107,9 @@ impl EventDescriptor {
             return None;
         }
 
-        let mut hasher = Hasher::new();
+        let mut hasher = Keccak::new();
         write!(&mut hasher, "{}", self.canonical()).unwrap();
-        Some(hasher.topic())
+        Some(topic(hasher))
     }
 }
 
@@ -138,9 +138,9 @@ impl ErrorDescriptor {
 
     /// Computes the selector the error type.
     pub fn selector(&self) -> Selector {
-        let mut hasher = Hasher::new();
+        let mut hasher = Keccak::new();
         write!(&mut hasher, "{}", self.canonical()).unwrap();
-        hasher.selector()
+        selector(hasher)
     }
 }
 
@@ -260,32 +260,6 @@ impl Display for Signature<'_> {
     }
 }
 
-/// A helper type used for writing formatted data directly into a hasher to
-/// avoid unecessary allocations.
-struct Hasher(Keccak256);
-
-impl Hasher {
-    fn new() -> Self {
-        Self(Keccak256::new())
-    }
-
-    fn selector(self) -> Selector {
-        let digest = self.0.finalize();
-        Selector(digest[..4].try_into().unwrap())
-    }
-
-    fn topic(self) -> Word {
-        self.0.finalize().into()
-    }
-}
-
-impl Write for Hasher {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.0.update(s);
-        Ok(())
-    }
-}
-
 fn fmt_fields<'a, T, I>(f: &mut Formatter, fields: I) -> fmt::Result
 where
     T: 'a,
@@ -300,6 +274,15 @@ where
         write!(f, "{}", Canonical(field))?;
     }
     f.write_str(")")
+}
+
+fn selector(hasher: Keccak) -> Selector {
+    let digest = hasher.finalize();
+    Selector(digest[..4].try_into().unwrap())
+}
+
+fn topic(hasher: Keccak) -> [u8; 32] {
+    *hasher.finalize()
 }
 
 #[cfg(test)]

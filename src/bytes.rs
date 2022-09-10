@@ -7,7 +7,7 @@ use crate::{
     log::{FromTopic, ToTopic, TopicHash},
     primitive::{Primitive, Word},
 };
-use sha3::{Digest, Keccak256};
+use ethdigest::Keccak;
 use std::{
     borrow::{Borrow, Cow},
     fmt::{self, Debug, Formatter},
@@ -149,7 +149,7 @@ impl ToTopic for Bytes<[u8]> {
 }
 
 impl TopicHash for Bytes<[u8]> {
-    fn update_hash(&self, hasher: &mut Keccak256) {
+    fn update_hash(&self, hasher: &mut Keccak) {
         Bytes(&self.0).update_hash(hasher);
     }
 }
@@ -168,14 +168,14 @@ impl Encode for Bytes<&'_ [u8]> {
 
 impl ToTopic for Bytes<&'_ [u8]> {
     fn to_topic(&self) -> Word {
-        let mut hasher = Keccak256::new();
+        let mut hasher = Keccak::new();
         hasher.update(self);
-        hasher.finalize().into()
+        *hasher.finalize()
     }
 }
 
 impl TopicHash for Bytes<&'_ [u8]> {
-    fn update_hash(&self, hasher: &mut Keccak256) {
+    fn update_hash(&self, hasher: &mut Keccak) {
         hasher.update(self);
 
         static ZEROS: Word = [0; 32];
@@ -218,7 +218,7 @@ impl FromTopic for Bytes<Vec<u8>> {
 }
 
 impl TopicHash for Bytes<Vec<u8>> {
-    fn update_hash(&self, hasher: &mut Keccak256) {
+    fn update_hash(&self, hasher: &mut Keccak) {
         Bytes(&self[..]).update_hash(hasher);
     }
 }
