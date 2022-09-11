@@ -18,6 +18,7 @@ pub use self::{
     encode::{encode, encode_to, encode_with_prefix, encode_with_selector},
 };
 pub use ethaddr as addr;
+pub use ethdigest as digest;
 pub use ethnum as num;
 
 #[cfg(test)]
