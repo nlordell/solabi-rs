@@ -14,7 +14,7 @@ categories = ["cryptography::cryptocurrencies"]
 
 [dependencies]
 ethaddr = { version = "0.1", features = ["macros"] }
-ethdigest = { version = "0.1", features = ["keccak", "macros"] }
+ethdigest = { version = "0.2", features = ["keccak", "macros"] }
 ethnum = "1"
 serde = { version = "1", features = ["derive"] }
 
