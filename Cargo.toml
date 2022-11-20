@@ -21,6 +21,6 @@ ethprim = { version = "0.1", features = ["keccak", "serde"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
-ethprim = { version = "*", features = ["macros"] }
+ethprim = { version = "0.1", features = ["macros"] }
 hex-literal = "0.3"
 serde_json = "1"
