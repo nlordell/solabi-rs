@@ -1,8 +1,6 @@
 //! Solidity primitive type trait and implementations.
 
-use ethaddr::Address;
-use ethdigest::Digest;
-use ethnum::{AsI256 as _, I256, U256};
+use ethprim::{Address, AsI256 as _, Digest, I256, U256};
 
 /// An Ethereum 32-byte word.
 pub type Word = [u8; 32];

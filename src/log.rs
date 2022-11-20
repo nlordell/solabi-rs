@@ -4,7 +4,7 @@ use crate::{
     bytes::Bytes,
     primitive::{Primitive, Word},
 };
-use ethdigest::Keccak;
+use ethprim::Keccak;
 use std::{
     array::TryFromSliceError,
     borrow::{Borrow, BorrowMut, Cow},

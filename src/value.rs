@@ -15,9 +15,7 @@ use crate::{
     log::TopicHash as _,
     primitive::{Primitive, Word},
 };
-use ethaddr::Address;
-use ethdigest::Keccak;
-use ethnum::{I256, U256};
+use ethprim::{Address, Keccak, I256, U256};
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Deref, Shl, Shr},
@@ -189,10 +187,10 @@ impl Value {
             Value::Bool(a) => hasher.update(a.to_word()),
             Value::FixedBytes(a) => hasher.update(a.into_word()),
             Value::Function(a) => hasher.update(a.to_word()),
-            Value::FixedArray(a) | Value::Array(a) => hash_array(&**a, hasher),
+            Value::FixedArray(a) | Value::Array(a) => hash_array(a, hasher),
             Value::Bytes(a) => Bytes(&a[..]).update_hash(hasher),
             Value::String(a) => a.update_hash(hasher),
-            Value::Tuple(a) => hash_array(&**a, hasher),
+            Value::Tuple(a) => hash_array(a, hasher),
         }
     }
 

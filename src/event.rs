@@ -243,8 +243,7 @@ impl_indexed! { anonymous: A, B, C, D }
 mod tests {
     use super::*;
     use crate::bytes::Bytes;
-    use ethaddr::{address, Address};
-    use ethnum::U256;
+    use ethprim::{address, uint, Address, U256};
     use hex_literal::hex;
     use std::borrow::Cow;
 
@@ -256,7 +255,7 @@ mod tests {
 
         let from = address!("0x0101010101010101010101010101010101010101");
         let to = address!("0x0202020202020202020202020202020202020202");
-        let value = U256::new(4_200_000_000_000_000_000);
+        let value = uint!("4_200_000_000_000_000_000");
 
         let log = Log {
             topics: Topics::from([
@@ -287,7 +286,7 @@ mod tests {
             ]
             .into(),
         );
-        let fields = (U256::new(1), U256::new(2));
+        let fields = (uint!("1"), uint!("2"));
 
         let log = Log {
             topics: Topics::from([

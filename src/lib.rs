@@ -17,9 +17,7 @@ pub use self::{
     decode::{decode, decode_with_prefix, decode_with_selector},
     encode::{encode, encode_to, encode_with_prefix, encode_with_selector},
 };
-pub use ethaddr as addr;
-pub use ethdigest as digest;
-pub use ethnum as num;
+pub use ethprim;
 
 #[cfg(test)]
 mod tests {
@@ -29,8 +27,7 @@ mod tests {
         function::{ExternalFunction, Selector},
         primitive::Primitive as _,
     };
-    use ethaddr::address;
-    use ethnum::U256;
+    use ethprim::{address, uint};
     use hex_literal::hex;
 
     macro_rules! assert_encoding {
@@ -52,7 +49,7 @@ mod tests {
     #[test]
     fn the_answer_to_life_the_universe_everything() {
         assert_encoding!(
-            U256::new(42),
+            uint!("42"),
             hex!("000000000000000000000000000000000000000000000000000000000000002a"),
         );
     }

@@ -6,7 +6,7 @@ use crate::{
     fmt::Hex,
     primitive::{Primitive, Word},
 };
-use ethaddr::Address;
+use ethprim::Address;
 use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
@@ -142,8 +142,7 @@ impl<P, R> Debug for FunctionEncoder<P, R> {
 mod tests {
     use super::*;
     use crate::bytes::Bytes;
-    use ethaddr::{address, Address};
-    use ethnum::U256;
+    use ethprim::{address, uint, Address, U256};
     use hex_literal::hex;
     use std::borrow::Cow;
 
@@ -152,7 +151,7 @@ mod tests {
         let transfer = FunctionEncoder::<(Address, U256), (bool,)>::new(Selector(hex!("a9059cbb")));
 
         let to = address!("0x0101010101010101010101010101010101010101");
-        let value = U256::new(4_200_000_000_000_000_000);
+        let value = uint!("4_200_000_000_000_000_000");
 
         let call = hex!(
             "a9059cbb

@@ -6,7 +6,7 @@ use crate::{
     function::Selector,
     primitive::{Primitive, Word},
 };
-use ethnum::U256;
+use ethprim::U256;
 use std::{
     borrow::Cow,
     error::Error,

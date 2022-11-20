@@ -4,7 +4,7 @@ pub mod declaration;
 mod json;
 
 use crate::{function::Selector, primitive::Word, value::ValueKind};
-use ethdigest::Keccak;
+use ethprim::Keccak;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter, Write as _};
 

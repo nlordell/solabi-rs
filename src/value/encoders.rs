@@ -289,8 +289,7 @@ where
 mod tests {
     use super::*;
     use crate::value::{Array, Uint};
-    use ethaddr::address;
-    use ethnum::U256;
+    use ethprim::{address, uint, U256};
     use hex_literal::hex;
 
     #[test]
@@ -303,7 +302,7 @@ mod tests {
 
         let params = [
             Value::Address(address!("0x0101010101010101010101010101010101010101")),
-            Value::Uint(Uint::new(256, U256::new(4_200_000_000_000_000_000)).unwrap()),
+            Value::Uint(Uint::new(256, uint!("4_200_000_000_000_000_000")).unwrap()),
         ];
 
         let call = hex!(
@@ -365,7 +364,7 @@ mod tests {
         let fields = [
             Value::Address(address!("0x0101010101010101010101010101010101010101")),
             Value::Address(address!("0x0202020202020202020202020202020202020202")),
-            Value::Uint(Uint::new(256, U256::new(4_200_000_000_000_000_000)).unwrap()),
+            Value::Uint(Uint::new(256, uint!("4_200_000_000_000_000_000")).unwrap()),
         ];
 
         let log = Log {
@@ -398,7 +397,7 @@ mod tests {
         let encoder = EventEncoder::new(&event).unwrap();
 
         let mut fields = [
-            Value::Uint(Uint::new(256, U256::new(1)).unwrap()),
+            Value::Uint(Uint::new(256, uint!("1")).unwrap()),
             Value::String("hello world".to_owned()),
             Value::Array(
                 Array::from_values(vec![
@@ -419,7 +418,7 @@ mod tests {
                 ])
                 .unwrap(),
             ),
-            Value::Uint(Uint::new(256, U256::new(2)).unwrap()),
+            Value::Uint(Uint::new(256, uint!("2")).unwrap()),
         ];
 
         let log = Log {

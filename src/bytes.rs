@@ -7,7 +7,7 @@ use crate::{
     log::{FromTopic, ToTopic, TopicHash},
     primitive::{Primitive, Word},
 };
-use ethdigest::Keccak;
+use ethprim::Keccak;
 use std::{
     borrow::{Borrow, Cow},
     fmt::{self, Debug, Formatter},

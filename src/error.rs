@@ -51,8 +51,7 @@ impl<D> Debug for ErrorEncoder<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethaddr::{address, Address};
-    use ethnum::U256;
+    use ethprim::{address, uint, Address, U256};
     use hex_literal::hex;
     use std::borrow::Cow;
 
@@ -61,7 +60,7 @@ mod tests {
         let insufficient_balance = ErrorEncoder::<(Address, U256)>::new(Selector(hex!("f6deaa04")));
 
         let account = address!("0x0101010101010101010101010101010101010101");
-        let balance = U256::new(4_200_000_000_000_000_000);
+        let balance = uint!("4_200_000_000_000_000_000");
 
         let data = hex!(
             "f6deaa04

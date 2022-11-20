@@ -65,7 +65,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethaddr::{address, Address};
+    use ethprim::{address, Address};
     use hex_literal::hex;
 
     #[test]
