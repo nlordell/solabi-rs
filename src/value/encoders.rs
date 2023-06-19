@@ -13,11 +13,11 @@ use crate::{
     log::{Log, Topics},
     primitive::Word,
 };
-use std::borrow::Cow;
-
-/// An error indicating that some value data is not of the correct type.
-#[derive(Debug)]
-pub struct ValueKindError;
+use std::{
+    borrow::Cow,
+    error::Error,
+    fmt::{self, Display, Formatter},
+};
 
 /// A function encoder.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -119,12 +119,12 @@ pub struct EventEncoder {
 
 impl EventEncoder {
     /// Creates a new error encoder from a selector.
-    pub fn new(descriptor: &EventDescriptor) -> Result<Self, ValueKindError> {
+    pub fn new(descriptor: &EventDescriptor) -> Result<Self, EventIndexError> {
         let selector = descriptor.selector();
         if selector.iter().count() + descriptor.inputs.iter().filter(|i| i.indexed).count()
             > Topics::MAX_LEN
         {
-            return Err(ValueKindError);
+            return Err(EventIndexError);
         }
 
         Ok(Self {
@@ -307,6 +307,31 @@ where
     }
     Ok(())
 }
+
+/// An error indicating that some value data is not of the correct type.
+#[derive(Debug)]
+pub struct ValueKindError;
+
+impl Display for ValueKindError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str("value does not match the expected kind")
+    }
+}
+
+impl Error for ValueKindError {}
+
+/// An error indicating that an event descriptor contains too many indexed
+/// fields.
+#[derive(Debug)]
+pub struct EventIndexError;
+
+impl Display for EventIndexError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str("event has too many indexed fields")
+    }
+}
+
+impl Error for EventIndexError {}
 
 #[cfg(test)]
 mod tests {
