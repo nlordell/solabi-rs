@@ -712,6 +712,23 @@ impl Deref for FixedBytes {
     }
 }
 
+macro_rules! impl_from_byte_array_for_fixed_bytes {
+    ($($n:literal,)*) => {$(
+        impl From<[u8; $n]> for FixedBytes {
+            fn from(value: [u8; $n]) -> Self {
+                let mut bytes = [0; 32];
+                bytes[..$n].copy_from_slice(&value);
+                Self(ByteLength($n), bytes)
+            }
+        }
+    )*};
+}
+
+impl_from_byte_array_for_fixed_bytes! {
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+}
+
 /// An array of values.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Array(ValueKind, Vec<Value>);

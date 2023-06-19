@@ -137,7 +137,7 @@ impl EventEncoder {
         })
     }
 
-    /// Encodes a Solidity error for the specified data.
+    /// Encodes a Solidity event for the specified Ethereum log.
     pub fn encode(&self, fields: &[Value]) -> Result<Log<'static>, ValueKindError> {
         of_kind(fields, self.fields.iter().map(|(_, kind)| kind))?;
         let encoding = EncodeLog(&self.fields, fields);
@@ -163,7 +163,10 @@ impl EventEncoder {
         })
     }
 
-    /// Decodes a Solidity error from the return bytes call into its data.
+    /// Decodes a Solidity event from an Ethereum log.
+    ///
+    /// Note that non-primitive indexed fields will be replaced with a `bytes32`
+    /// value equal to the hash of its ABI-encoded value.
     pub fn decode(&self, log: &Log) -> Result<Vec<Value>, DecodeError> {
         let mut topics = log.topics.into_iter();
         if let Some(selector) = self.selector {
@@ -177,12 +180,32 @@ impl EventEncoder {
             .fields
             .iter()
             .zip(&mut fields)
-            .filter(|((indexed, kind), _)| *indexed && kind.is_primitive())
+            .filter(|((indexed, _), _)| *indexed)
             .zip(topics)
         {
-            *value = Value::from_word(kind, topic).unwrap();
+            *value = if kind.is_primitive() {
+                Value::from_word(kind, topic).unwrap()
+            } else {
+                Value::FixedBytes(topic.into())
+            };
         }
 
+        Ok(fields)
+    }
+
+    /// Decodes a Solidity event from an Ethereum log, replacing non-primitive
+    /// indexed fields with their default values (e.g. empty string for a
+    /// `string` field).
+    pub fn decode_lossy(&self, log: &Log) -> Result<Vec<Value>, DecodeError> {
+        let mut fields = self.decode(log)?;
+        for ((_, kind), value) in self
+            .fields
+            .iter()
+            .zip(&mut fields)
+            .filter(|((indexed, kind), _)| *indexed && !kind.is_primitive())
+        {
+            *value = Value::default(kind);
+        }
         Ok(fields)
     }
 }
@@ -388,6 +411,7 @@ mod tests {
             event Log(
                 uint,
                 string indexed,
+                bool indexed,
                 (uint, (bool, bytes))[] indexed,
                 uint
             ) anonymous
@@ -399,6 +423,7 @@ mod tests {
         let mut fields = [
             Value::Uint(Uint::new(256, uint!("1")).unwrap()),
             Value::String("hello world".to_owned()),
+            Value::Bool(true),
             Value::Array(
                 Array::from_values(vec![
                     Value::Tuple(vec![
@@ -424,6 +449,7 @@ mod tests {
         let log = Log {
             topics: Topics::from([
                 hex!("47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad"),
+                hex!("0000000000000000000000000000000000000000000000000000000000000001"),
                 hex!("6b8a0e75eceddd0e7d4d0413a720bce2cb899061e362357db170c49c5563672f"),
             ]),
             data: hex!(
@@ -436,8 +462,17 @@ mod tests {
         assert_eq!(encoder.encode(&fields).unwrap(), log);
 
         // Note that indexed dynamic fields are **not** actually recoverable.
+
         fields[1] = Value::default(&fields[1].kind());
-        fields[2] = Value::default(&fields[2].kind());
+        fields[3] = Value::default(&fields[3].kind());
+        assert_eq!(encoder.decode_lossy(&log).unwrap(), fields);
+
+        fields[1] = Value::FixedBytes(
+            hex!("47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad").into(),
+        );
+        fields[3] = Value::FixedBytes(
+            hex!("6b8a0e75eceddd0e7d4d0413a720bce2cb899061e362357db170c49c5563672f").into(),
+        );
         assert_eq!(encoder.decode(&log).unwrap(), fields);
     }
 
