@@ -17,6 +17,29 @@ use std::{
 #[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
 pub struct Selector(pub [u8; 4]);
 
+impl Selector {
+    /// Creates a new function selector from a [`Word`].
+    pub const fn from_word(word: Word) -> Self {
+        Self([word[0], word[1], word[2], word[3]])
+    }
+}
+
+/// Macro for creating a compile-time computed function selector.
+///
+/// ```rust
+/// assert_eq!(
+///     solabi::selector!("transfer(address,uint256)"),
+///     solabi::Selector(*b"\xa9\x05\x9c\xbb"),
+/// );
+/// ```
+#[cfg(feature = "macros")]
+#[macro_export]
+macro_rules! selector {
+    ($signature:literal) => {
+        $crate::function::Selector::from_word($crate::ethprim::keccak!($signature).0)
+    };
+}
+
 impl AsRef<[u8]> for Selector {
     fn as_ref(&self) -> &[u8] {
         &self.0[..]
@@ -102,7 +125,7 @@ where
     R: Encode + Decode,
 {
     /// Creates a new function encoder from a selector.
-    pub fn new(selector: Selector) -> Self {
+    pub const fn new(selector: Selector) -> Self {
         Self {
             selector,
             _marker: PhantomData,

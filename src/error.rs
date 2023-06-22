@@ -22,7 +22,7 @@ where
     D: Encode + Decode,
 {
     /// Creates a new error encoder from a selector.
-    pub fn new(selector: Selector) -> Self {
+    pub const fn new(selector: Selector) -> Self {
         Self {
             selector,
             _marker: PhantomData,

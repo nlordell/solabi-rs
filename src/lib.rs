@@ -1,4 +1,122 @@
 //! Solidity ABI encoding and decoding implementation.
+//!
+//! At a high level, this crate provides Solidity ABI [`encode()`]-ing and
+//! [`decode()`]-ing implementations for a collection of primitive types, as
+//! well as generic implementations for various collections and tuple types.
+//!
+//! ```rust
+//! # use solabi::*;
+//! let encoded = solabi::encode(&(42_i32, true, Bytes::borrowed(&[0, 1, 2, 3])));
+//! let (a, b, c): (i32, bool, Bytes<Vec<u8>>) = solabi::decode(&encoded).unwrap();
+//! assert_eq!(a, 42);
+//! assert_eq!(b, true);
+//! assert_eq!(c.as_bytes(), [0, 1, 2, 3]);
+//! ```
+//!
+//! # Encoders
+//!
+//! Furthermore, this library provides encoders for various Solidity ABI items:
+//! - Functions ([`FunctionEncoder`] and [`ConstructorEncoder`]).
+//! - Events ([`EventEncoder`] and [`AnonymousEventEncoder`]).
+//! - Errors ([`ErrorEncoder`]).
+//!
+//! These encoders provide a type-safe interface for Solidity encoding and
+//! decoding their parameters.
+//!
+#![cfg_attr(
+    feature = "macros",
+    doc = r##"
+```rust
+# use solabi::{*, ethprim::{address, uint}};
+const TRANSFER: FunctionEncoder<(Address, U256), (bool,)> =
+    FunctionEncoder::new(selector!("transfer(address,uint256)"));
+
+let call = TRANSFER.encode_params(&(
+    ethprim::address!("0x0101010101010101010101010101010101010101"),
+    ethprim::uint!("4_200_000_000_000_000_000"),
+));
+# let _ = call;
+```
+"##
+)]
+//!
+//! # Dynamic Values
+//!
+//! The [`value::Value`] type provides dynamic Solidity values. This allows
+//! Solidity ABI encoding and decoding when types are not known at compile-time.
+//!
+#![cfg_attr(
+    feature = "macros",
+    doc = r##"
+```rust
+# use solabi::{*, ethprim::{address, uint}};
+let event = abi::EventDescriptor::parse_declaration(
+    "event Transfer(address indexed to, address indexed from, uint256 value)",
+)
+.unwrap();
+let encoder = value::EventEncoder::new(&event).unwrap();
+let log = encoder
+    .encode(&[
+        Value::Address(address!("0x0101010101010101010101010101010101010101")),
+        Value::Address(address!("0x0202020202020202020202020202020202020202")),
+        Value::Uint(value::Uint::new(256, uint!("4_200_000_000_000_000_000")).unwrap()),
+    ])
+    .unwrap();
+# let _ = log;
+```
+"##
+)]
+//! # Custom Encoding Implementation
+//!
+//! It can be useful to define custom types that encode and decode to the
+//! Solidity ABI. This can be done by implementing the [`encode::Encode`] and
+//! [`decode::Decode`] traits.
+//!
+//! ```rust
+//! # use solabi::{
+//! #     encode::{Encode, Encoder, Size},
+//! #     decode::{Decode, DecodeError, Decoder},
+//! # };
+//! #[derive(Debug, Eq, PartialEq)]
+//! struct MyStruct {
+//!     a: u64,
+//!     b: String,
+//! }
+//!
+//! impl Encode for MyStruct {
+//!     fn size(&self) -> Size {
+//!         (self.a, self.b.as_str()).size()
+//!     }
+//!
+//!     fn encode(&self, encoder: &mut Encoder) {
+//!         (self.a, self.b.as_str()).encode(encoder);
+//!     }
+//! }
+//!
+//! impl Decode for MyStruct {
+//!     fn is_dynamic() -> bool {
+//!         <(u64, String)>::is_dynamic()
+//!     }
+//!
+//!     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
+//!         let (a, b) = Decode::decode(decoder)?;
+//!         Ok(Self { a, b })
+//!     }
+//! }
+//!
+//! let my_struct = MyStruct {
+//!     a: 42,
+//!     b: "The Answer to Life the Universe and Everything".to_string(),
+//! };
+//!
+//! let encoded = solabi::encode(&my_struct);
+//! let decoded = solabi::decode(&encoded).unwrap();
+//!
+//! assert_eq!(my_struct, decoded);
+//! ```
+//!
+//! > There are plans to provide `Encode` and `Decode` procedural macros to
+//! > automatically implement these traits in the future.
 
 pub mod abi;
 pub mod bytes;
@@ -8,16 +126,24 @@ pub mod encode;
 pub mod error;
 pub mod event;
 mod fmt;
+#[macro_use]
 pub mod function;
 pub mod log;
 pub mod primitive;
 pub mod value;
 
 pub use self::{
+    bytes::Bytes,
+    constructor::ConstructorEncoder,
     decode::{decode, decode_with_prefix, decode_with_selector},
     encode::{encode, encode_to, encode_with_prefix, encode_with_selector},
+    error::ErrorEncoder,
+    event::{AnonymousEventEncoder, EventEncoder},
+    function::{ExternalFunction, FunctionEncoder, Selector},
+    log::{Log, Topics},
+    value::{Value, ValueKind},
 };
-pub use ethprim;
+pub use ethprim::{self, Address, Digest, I256, U256};
 
 #[cfg(test)]
 mod tests {

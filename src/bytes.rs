@@ -25,7 +25,7 @@ where
 impl Bytes<[u8]> {
     /// Returns a borrowed `Bytes` from a slice of bytes.
     #[allow(clippy::needless_lifetimes)]
-    pub fn new<'a>(bytes: &'a [u8]) -> &'a Bytes<[u8]> {
+    pub const fn new<'a>(bytes: &'a [u8]) -> &'a Bytes<[u8]> {
         // SAFETY: DSTs are a bit of a mystery to me... To my understanding
         // this should be safe because `Bytes` has a transparent layout, so
         // `&[u8]` and `&Bytes<[u8]>`. Either way, we should get a fat pointer
@@ -36,8 +36,28 @@ impl Bytes<[u8]> {
 
     /// Returns a new `Cow::Borrowed` slice of bytes.
     #[allow(clippy::needless_lifetimes)]
-    pub fn borrowed<'a>(bytes: &'a [u8]) -> Cow<'a, Bytes<[u8]>> {
+    pub const fn borrowed<'a>(bytes: &'a [u8]) -> Cow<'a, Bytes<[u8]>> {
         Cow::Borrowed(Self::new(bytes))
+    }
+}
+
+impl<T> Bytes<T>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    /// Returns the underlying slice of bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.as_ref()
+    }
+}
+
+impl<T> Bytes<T>
+where
+    T: AsMut<[u8]> + ?Sized,
+{
+    /// Returns a mutable reference to the underlying slice of bytes.
+    pub fn as_bytes_mut(&mut self) -> &[u8] {
+        self.as_mut()
     }
 }
 

@@ -23,7 +23,7 @@ where
     P: Encode + Decode,
 {
     /// Creates a new constructor encoder from a selector.
-    pub fn new(code: B) -> Self {
+    pub const fn new(code: B) -> Self {
         Self {
             code,
             _marker: PhantomData,

@@ -64,10 +64,10 @@ impl Topics {
         unsafe { &mut *(&mut self.values[..self.len] as *mut [_] as *mut [Word]) }
     }
 
-    /// Tries to append a topic.
+    /// Tries to append a topic as a [`Word`].
     ///
     /// Returns `Err` if the topics are full.
-    pub fn try_push(&mut self, topic: Word) -> Result<(), Word> {
+    pub fn try_push_word(&mut self, topic: Word) -> Result<(), Word> {
         if self.len >= Topics::MAX_LEN {
             return Err(topic);
         }
@@ -76,13 +76,30 @@ impl Topics {
         Ok(())
     }
 
+    /// Appends a topic as a [`Word`].
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the topics are full.
+    pub fn push_word(&mut self, topic: Word) {
+        self.try_push_word(topic)
+            .unwrap_or_else(|_| panic!("topics are full"));
+    }
+
+    /// Tries to append a topic.
+    ///
+    /// Returns `Err` if the topics are full.
+    pub fn try_push(&mut self, topic: &impl ToTopic) -> Result<(), Word> {
+        self.try_push_word(topic.to_topic())
+    }
+
     /// Appends a topic.
     ///
     /// # Panics
     ///
     /// This method will panic if the topics are full.
-    pub fn push(&mut self, topic: Word) {
-        self.try_push(topic).expect("topics are full");
+    pub fn push(&mut self, topic: &impl ToTopic) {
+        self.push_word(topic.to_topic())
     }
 }
 

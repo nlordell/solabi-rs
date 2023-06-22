@@ -201,7 +201,7 @@ impl Value {
 
     /// Encodes a `Value`.
     ///
-    /// Note that `Value`s can't use the [`crate::encode`] method directly as
+    /// Note that `Value`s can't use the [`crate::encode()`] method directly as
     /// it would cause inconsistent behaviour. For example, a non-homogeneous
     /// `Vec<Value>` is not a valid Solidity type (which is why the [`Array`]
     /// abstraction exists).
@@ -232,7 +232,7 @@ impl Value {
 
     /// Decodes a `Value`.
     ///
-    /// Note that `Value`s can't use the [`crate::decode`] method directly as
+    /// Note that `Value`s can't use the [`crate::decode()`] method directly as
     /// it requires runtime type information for proper decoding.
     pub fn decode(kind: &ValueKind, bytes: &[u8]) -> Result<Self, DecodeError> {
         Ok(context::decode::<Decodable>(bytes, kind)?.0)
@@ -676,10 +676,10 @@ impl Deref for ByteLength {
     }
 }
 
-/// A dynamic value for reprensenting Solidity fixed bytes type.
+/// A dynamic value for representing Solidity fixed bytes type.
 ///
-/// This is different than using [`crate::types::bytes::Bytes`] in that the size
-/// is not known at compile time.
+/// This is different than using [`crate::bytes::Bytes`] in that the size is not
+/// known at compile time.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FixedBytes(ByteLength, [u8; 32]);
 

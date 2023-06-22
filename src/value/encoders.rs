@@ -145,7 +145,7 @@ impl EventEncoder {
 
         let mut topics = Topics::default();
         if let Some(selector) = self.selector {
-            topics.push(selector)
+            topics.push_word(selector)
         }
 
         for (_, value) in self
@@ -154,7 +154,7 @@ impl EventEncoder {
             .zip(fields)
             .filter(|((indexed, _), _)| *indexed)
         {
-            topics.push(value.to_topic());
+            topics.push_word(value.to_topic());
         }
 
         Ok(Log {

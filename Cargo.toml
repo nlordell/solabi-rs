@@ -12,6 +12,9 @@ license = "MIT OR Apache-2.0"
 keywords = ["solidity", "abi", "ethereum"]
 categories = ["cryptography::cryptocurrencies"]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = []
 macros = ["ethprim/macros"]

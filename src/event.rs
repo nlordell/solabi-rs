@@ -16,7 +16,7 @@ use std::{
 /// A trait for converting to and from event indices.
 pub trait Indexed: Sized {
     fn from_topics(topics: &Topics) -> Result<(Word, Self), IndexError>;
-    fn to_topics(selector: &Word, indices: &Self) -> Topics;
+    fn to_topics(topic0: &Word, indices: &Self) -> Topics;
 }
 
 /// A trait for converting to and from event indices.
@@ -25,10 +25,10 @@ pub trait IndexedAnonymous: Sized {
     fn to_topics_anonymous(&self) -> Topics;
 }
 
-/// An event encoder with a known selector.
+/// An event encoder with a known topic0.
 pub struct EventEncoder<I, D> {
-    /// The event selector.
-    pub selector: Word,
+    /// The event topic 0.
+    pub topic0: Word,
     _marker: PhantomData<*const (I, D)>,
 }
 
@@ -37,10 +37,10 @@ where
     I: Indexed,
     D: Encode + Decode,
 {
-    /// Creates a new typed event from a selector.
-    pub fn new(selector: Word) -> Self {
+    /// Creates a new typed event from a topic0.
+    pub const fn new(topic0: Word) -> Self {
         Self {
-            selector,
+            topic0,
             _marker: PhantomData,
         }
     }
@@ -48,7 +48,7 @@ where
     /// Encode event data into an EVM log.
     pub fn encode(&self, indices: &I, data: &D) -> Log {
         Log {
-            topics: I::to_topics(&self.selector, indices),
+            topics: I::to_topics(&self.topic0, indices),
             data: crate::encode(data).into(),
         }
     }
@@ -56,7 +56,7 @@ where
     /// Decode event data from an EVM log.
     pub fn decode(&self, log: &Log) -> Result<(I, D), ParseError> {
         let (topic0, indices) = I::from_topics(&log.topics)?;
-        if topic0 != self.selector {
+        if topic0 != self.topic0 {
             return Err(ParseError::SelectorMismatch(topic0));
         }
         let data = crate::decode(&log.data)?;
@@ -68,7 +68,7 @@ where
 impl<I, D> Debug for EventEncoder<I, D> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_struct("EventEncoder")
-            .field("selector", &Hex(&self.selector))
+            .field("topic0", &Hex(&self.topic0))
             .finish()
     }
 }
@@ -127,7 +127,7 @@ where
 pub enum ParseError {
     /// An error parsing log indices.
     Index,
-    /// The event's selector does not match the log's topic0.
+    /// The event's topic0 does not match the log's topic0.
     SelectorMismatch(Word),
     /// An error decoding log data.
     Data(DecodeError),
@@ -137,9 +137,9 @@ impl Debug for ParseError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Self::Index => f.debug_tuple("Index").finish(),
-            Self::SelectorMismatch(selector) => f
+            Self::SelectorMismatch(topic0) => f
                 .debug_tuple("SelectorMismatch")
-                .field(&Hex(selector))
+                .field(&Hex(topic0))
                 .finish(),
             Self::Data(err) => f.debug_tuple("Data").field(err).finish(),
         }
@@ -150,7 +150,7 @@ impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Self::Index => write!(f, "{IndexError}"),
-            Self::SelectorMismatch(_) => f.write_str("event selector does not match log's topic0"),
+            Self::SelectorMismatch(_) => f.write_str("event topic0 does not match log's topic0"),
             Self::Data(err) => write!(f, "{err}"),
         }
     }
@@ -202,8 +202,8 @@ macro_rules! impl_indexed {
                 Ok((topic0, ($($t,)*)))
             }
 
-            fn to_topics(selector: &Word, ($($t,)*): &Self) -> Topics {
-                Topics::from([*selector, $($t.to_topic()),*])
+            fn to_topics(topic0: &Word, ($($t,)*): &Self) -> Topics {
+                Topics::from([*topic0, $($t.to_topic()),*])
             }
         }
 
@@ -259,7 +259,7 @@ mod tests {
 
         let log = Log {
             topics: Topics::from([
-                transfer.selector,
+                transfer.topic0,
                 hex!("0000000000000000000000000101010101010101010101010101010101010101"),
                 hex!("0000000000000000000000000202020202020202020202020202020202020202"),
             ]),

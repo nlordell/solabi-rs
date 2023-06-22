@@ -42,7 +42,7 @@ impl Value {
 
     /// Decodes a `Value`.
     ///
-    /// Note that `Value`s can't use the [`crate::decode`] method directly as
+    /// Note that `Value`s can't use the [`crate::decode()`] method directly as
     /// it requires runtime type information for proper decoding.
     pub fn decode_tuple(kinds: &[ValueKind], bytes: &[u8]) -> Result<Vec<Self>, DecodeError> {
         dbg!(kinds, bytes);
