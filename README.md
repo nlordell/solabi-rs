@@ -47,46 +47,44 @@ complete, there are a couple of features that expected to be implemented before
       generating types for encoding and decoding Solidity contract items. While
       the exact API is not yet determined, it is expected to look something
       like:
+  ```rust
+  #[derive(solabi::Function)]
+  #[solabi(signature = "function transferFrom(address, address, uint256) returns (bool)")]
+  struct TransferFrom;
 
-      ```rust
-      #[derive(solabi::Function)]
-      #[solabi(signature = "function transferFrom(address, address, uint256) returns (bool)")]
-      struct TransferFrom;
+  #[derive(solabi::Event)]
+  struct Transfer {
+      #[solabi(indexed)]
+      pub from: Address,
+      #[solabi(indexed)]
+      pub to: Address,
+      pub value: U256,
+  }
 
-      #[derive(solabi::Event)]
-      struct Transfer {
-          #[solabi(indexed)]
-          pub from: Address,
-          #[solabi(indexed)]
-          pub to: Address,
-          pub value: U256,
-      }
+  fn main() {
+      TransferFrom.encode_params(...);
+      TransferFrom.decode_result(...);
 
-      fn main() {
-          TransferFrom.encode_params(...);
-          TransferFrom.decode_result(...);
-
-          Transfer { ... }.encode();
-          Transfer::decode(Log {
-              topics: ...,
-              data: ...,
-          })
-      }
-      ```
+      Transfer { ... }.encode();
+      Transfer::decode(Log {
+          topics: ...,
+          data: ...,
+      })
+  }
+  ```
 - [ ] Derive macro for `Encode` and `Decode`.
+  ```rust
+  #[derive(solabi::Decode, solabi::Encode)]
+  struct MyStruct {
+      name: String,
+      age: uint256,
+      occupation: Occupation,
+  }
 
-      ```rust
-      #[derive(solabi::Decode, solabi::Encode)]
-      struct MyStruct {
-          name: String,
-          age: uint256,
-          occupation: Occupation,
-      }
-
-      #[derive(solabi::Decode, solabi::Encode)]
-      enum Occupation {
-          Crypto,
-          Other,
-      }
-      ```
+  #[derive(solabi::Decode, solabi::Encode)]
+  enum Occupation {
+      Crypto,
+      Other,
+  }
+  ```
 - [ ] Solidity packed encoding.
