@@ -10,7 +10,6 @@ use ethprim::Address;
 use std::{
     fmt::{self, Debug, Formatter},
     marker::PhantomData,
-    ops::{Deref, DerefMut},
 };
 
 /// A function selector type.
@@ -49,20 +48,6 @@ impl AsRef<[u8]> for Selector {
 impl From<[u8; 4]> for Selector {
     fn from(bytes: [u8; 4]) -> Self {
         Self(bytes)
-    }
-}
-
-impl Deref for Selector {
-    type Target = [u8; 4];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Selector {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
 

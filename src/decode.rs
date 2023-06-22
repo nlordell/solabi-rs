@@ -42,7 +42,7 @@ pub fn decode_with_selector<T>(selector: Selector, bytes: &[u8]) -> Result<T, De
 where
     T: Decode,
 {
-    decode_with_prefix(&*selector, bytes)
+    decode_with_prefix(selector.as_ref(), bytes)
 }
 
 /// ABI-decodes a value prefixed with a prefix.

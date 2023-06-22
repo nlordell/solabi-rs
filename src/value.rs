@@ -18,7 +18,7 @@ use crate::{
 use ethprim::{Address, Keccak, I256, U256};
 use std::{
     fmt::{self, Display, Formatter},
-    ops::{Deref, Shl, Shr},
+    ops::{Shl, Shr},
     str::FromStr,
 };
 
@@ -123,8 +123,8 @@ impl Value {
     /// Casts the value to a word if it is a primitive type.
     pub fn to_word(&self) -> Option<Word> {
         match self {
-            Value::Int(a) => Some(a.to_word()),
-            Value::Uint(a) => Some(a.to_word()),
+            Value::Int(a) => Some(a.1.to_word()),
+            Value::Uint(a) => Some(a.1.to_word()),
             Value::Address(a) => Some(a.to_word()),
             Value::Bool(a) => Some(a.to_word()),
             Value::FixedBytes(a) => Some(a.into_word()),
@@ -181,13 +181,13 @@ impl Value {
         };
 
         match self {
-            Value::Int(a) => hasher.update(a.to_word()),
-            Value::Uint(a) => hasher.update(a.to_word()),
+            Value::Int(a) => hasher.update(a.1.to_word()),
+            Value::Uint(a) => hasher.update(a.1.to_word()),
             Value::Address(a) => hasher.update(a.to_word()),
             Value::Bool(a) => hasher.update(a.to_word()),
             Value::FixedBytes(a) => hasher.update(a.into_word()),
             Value::Function(a) => hasher.update(a.to_word()),
-            Value::FixedArray(a) | Value::Array(a) => hash_array(a, hasher),
+            Value::FixedArray(a) | Value::Array(a) => hash_array(a.as_slice(), hasher),
             Value::Bytes(a) => Bytes(&a[..]).update_hash(hasher),
             Value::String(a) => a.update_hash(hasher),
             Value::Tuple(a) => hash_array(a, hasher),
@@ -267,8 +267,8 @@ struct Encodable<'a>(&'a Value);
 impl Encode for Encodable<'_> {
     fn size(&self) -> Size {
         match self.0 {
-            Value::Int(value) => value.size(),
-            Value::Uint(value) => value.size(),
+            Value::Int(value) => value.1.size(),
+            Value::Uint(value) => value.1.size(),
             Value::Address(value) => value.size(),
             Value::Bool(value) => value.size(),
             Value::FixedBytes(value) => value.1.size(),
@@ -286,8 +286,8 @@ impl Encode for Encodable<'_> {
 
     fn encode(&self, encoder: &mut Encoder) {
         match self.0 {
-            Value::Int(value) => value.encode(encoder),
-            Value::Uint(value) => value.encode(encoder),
+            Value::Int(value) => value.1.encode(encoder),
+            Value::Uint(value) => value.1.encode(encoder),
             Value::Address(value) => value.encode(encoder),
             Value::Bool(value) => value.encode(encoder),
             Value::FixedBytes(value) => value.1.encode(encoder),
@@ -425,11 +425,11 @@ impl ValueKind {
 impl Display for ValueKind {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            ValueKind::Int(bit_width) => write!(f, "int{}", **bit_width),
-            ValueKind::Uint(bit_width) => write!(f, "uint{}", **bit_width),
+            ValueKind::Int(bit_width) => write!(f, "int{}", bit_width.0),
+            ValueKind::Uint(bit_width) => write!(f, "uint{}", bit_width.0),
             ValueKind::Address => f.write_str("address"),
             ValueKind::Bool => f.write_str("bool"),
-            ValueKind::FixedBytes(len) => write!(f, "bytes{}", **len),
+            ValueKind::FixedBytes(len) => write!(f, "bytes{}", len.0),
             ValueKind::Function => f.write_str("function"),
             ValueKind::FixedArray(len, kind) => write!(f, "{kind}[{len}]"),
             ValueKind::Bytes => f.write_str("bytes"),
@@ -558,19 +558,16 @@ impl BitWidth {
             None
         }
     }
+
+    /// Returns the bit width as a [`u32`].
+    pub fn get(self) -> u32 {
+        self.0
+    }
 }
 
 impl Default for BitWidth {
     fn default() -> Self {
         Self(256)
-    }
-}
-
-impl Deref for BitWidth {
-    type Target = u32;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -597,13 +594,11 @@ impl Int {
     pub fn bit_width(&self) -> BitWidth {
         self.0
     }
-}
 
-impl Deref for Int {
-    type Target = I256;
-
-    fn deref(&self) -> &Self::Target {
-        &self.1
+    /// Returns the integer as a [`I256`]. The integer will be sign extended if
+    /// its bit width is less than 256.
+    pub fn get(&self) -> I256 {
+        self.1
     }
 }
 
@@ -630,13 +625,10 @@ impl Uint {
     pub fn bit_width(&self) -> BitWidth {
         self.0
     }
-}
 
-impl Deref for Uint {
-    type Target = U256;
-
-    fn deref(&self) -> &Self::Target {
-        &self.1
+    /// Returns the integer as a [`U256`].
+    pub fn get(&self) -> U256 {
+        self.1
     }
 }
 
@@ -666,13 +658,10 @@ impl ByteLength {
             _ => None,
         }
     }
-}
 
-impl Deref for ByteLength {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    /// Returns the byte length as a [`usize`].
+    pub fn get(self) -> usize {
+        self.0
     }
 }
 
@@ -688,27 +677,23 @@ impl FixedBytes {
     pub fn new(bytes: &[u8]) -> Option<Self> {
         let len = ByteLength::new(bytes.len())?;
         let mut word = Word::default();
-        word[..*len].copy_from_slice(bytes);
+        word[..len.0].copy_from_slice(bytes);
         Some(Self(len, word))
     }
 
     /// Returns the byte length of the fixed bytes.
     pub fn byte_length(&self) -> ByteLength {
-        // Already verified by the constructor.
-        ByteLength(self.len())
+        self.0
+    }
+
+    /// Returns the fixed byte value as a slice of bytes.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.1[..self.0.get()]
     }
 
     /// Returns the fixed bytes as a word.
     pub fn into_word(self) -> Word {
         self.1
-    }
-}
-
-impl Deref for FixedBytes {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.1
     }
 }
 
@@ -757,13 +742,20 @@ impl Array {
     pub fn element_kind(&self) -> &ValueKind {
         &self.0
     }
-}
 
-impl Deref for Array {
-    type Target = [Value];
-
-    fn deref(&self) -> &Self::Target {
+    /// Returns the array as a slice.
+    pub fn as_slice(&self) -> &[Value] {
         &self.1
+    }
+
+    /// Returns the length of the array.
+    pub fn len(&self) -> usize {
+        self.1.len()
+    }
+
+    /// Returns whether or not the array is empty.
+    pub fn is_empty(&self) -> bool {
+        self.1.is_empty()
     }
 }
 
@@ -776,3 +768,16 @@ impl Deref for Array {
 //}
 
 // TODO(nlordell): Test this madness.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_bytes_kind() {
+        assert_eq!(
+            Value::FixedBytes(FixedBytes::new(&[1]).unwrap()).kind(),
+            ValueKind::FixedBytes(ByteLength::new(1).unwrap()),
+        );
+    }
+}
