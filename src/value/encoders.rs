@@ -502,6 +502,45 @@ mod tests {
     }
 
     #[test]
+    fn event_with_bytes() {
+        let event = EventDescriptor::parse_declaration(
+            "event OrderRefund(bytes orderUid, address indexed refunder)",
+        )
+        .unwrap();
+        let encoder = EventEncoder::new(&event).unwrap();
+
+        let fields = [
+            Value::Bytes(
+                hex!(
+                    "6ec84b0a4a85f4d619359c2c89e14ea1184e4a865a029b7d8f4487cab33354d8
+                     40a50cf069e992aa4536211b23f286ef88752187ffffffff"
+                )
+                .to_vec(),
+            ),
+            Value::Address(address!(
+                ~"0x0214ae5fd178986fa18ff792e0b995dc6a78cd56"
+            )),
+        ];
+
+        let log = Log {
+            topics: Topics::from([
+                hex!("195271068a288191e4b265c641a56b9832919f69e9e7d6c2f31ba40278aeb85a"),
+                hex!("0000000000000000000000000214ae5fd178986fa18ff792e0b995dc6a78cd56"),
+            ]),
+            data: hex!(
+                "0000000000000000000000000000000000000000000000000000000000000020
+                 0000000000000000000000000000000000000000000000000000000000000038
+                 6ec84b0a4a85f4d619359c2c89e14ea1184e4a865a029b7d8f4487cab33354d8
+                 40a50cf069e992aa4536211b23f286ef88752187ffffffff0000000000000000"
+            )[..]
+                .into(),
+        };
+
+        assert_eq!(encoder.encode(&fields).unwrap(), log);
+        assert_eq!(encoder.decode(&log).unwrap(), fields);
+    }
+
+    #[test]
     fn revert_error() {
         let error = ErrorDescriptor::parse_declaration("error Error(string message)").unwrap();
         let encoder = ErrorEncoder::new(&error);

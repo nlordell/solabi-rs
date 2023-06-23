@@ -273,7 +273,7 @@ impl Encode for Encodable<'_> {
             Value::Bool(value) => value.size(),
             Value::FixedBytes(value) => value.1.size(),
             Value::Function(value) => value.size(),
-            Value::Bytes(value) => value.size(),
+            Value::Bytes(value) => Bytes::borrowed(value).size(),
             Value::String(value) => value.size(),
             Value::Array(Array(_, values)) => {
                 Size::dynamic_array(values.iter().map(|item| Encodable(item).size()))
@@ -292,7 +292,7 @@ impl Encode for Encodable<'_> {
             Value::Bool(value) => value.encode(encoder),
             Value::FixedBytes(value) => value.1.encode(encoder),
             Value::Function(value) => value.encode(encoder),
-            Value::Bytes(value) => value.encode(encoder),
+            Value::Bytes(value) => Bytes::borrowed(value).encode(encoder),
             Value::String(value) => value.encode(encoder),
             Value::Array(Array(_, values)) => {
                 encoder.write(&values.len());
@@ -347,7 +347,7 @@ impl DecodeContext for Decodable {
                     .map(|_| Ok(decoder.read_context::<Decodable>(element)?.0))
                     .collect::<Result<_, _>>()?,
             )),
-            ValueKind::Bytes => Value::Bytes(Vec::decode(decoder)?),
+            ValueKind::Bytes => Value::Bytes(Bytes::decode(decoder)?.0),
             ValueKind::String => Value::String(String::decode(decoder)?),
             ValueKind::Array(element) => {
                 let len = decoder.read_size()?;
