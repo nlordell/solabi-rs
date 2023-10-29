@@ -473,6 +473,17 @@ mod tests {
     }
 
     #[test]
+    fn fails_to_decode_event_with_missing_topic0() {
+        let event = EventDescriptor::parse_declaration("event Foo()").unwrap();
+        let encoder = EventEncoder::new(&event).unwrap();
+
+        assert!(matches!(
+            encoder.decode(&Log::default()),
+            Err(ParseError::Index),
+        ));
+    }
+
+    #[test]
     fn anonymous_event_with_indexed_dynamic_field() {
         let event = EventDescriptor::parse_declaration(
             r#"
