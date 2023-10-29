@@ -272,6 +272,59 @@ mod tests {
     }
 
     #[test]
+    fn fails_to_decode_event_with_different_indices() {
+        let selector = hex!("ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef");
+
+        let transfer = EventEncoder::<(Address, Address), (U256,)>::new(selector);
+        let log = transfer.encode(
+            &(
+                address!("0x0101010101010101010101010101010101010101"),
+                address!("0x0202020202020202020202020202020202020202"),
+            ),
+            &(uint!("4_200_000_000_000_000_000"),),
+        );
+
+        let transfer = EventEncoder::<(Address, Address, U256), ()>::new(selector);
+        assert!(matches!(transfer.decode(&log), Err(ParseError::Index)));
+
+        let transfer = EventEncoder::<(Address,), (Address, U256)>::new(selector);
+        assert!(matches!(transfer.decode(&log), Err(ParseError::Index)));
+    }
+
+    #[test]
+    fn empty_indices_and_data() {
+        let event = EventEncoder::<(), (U256,)>::new([1; 32]);
+        let value = uint!("42");
+        let log = Log {
+            topics: Topics::from([event.topic0]),
+            data: hex!("000000000000000000000000000000000000000000000000000000000000002a")[..]
+                .into(),
+        };
+        assert_eq!(event.decode(&log).unwrap(), ((), (value,)),);
+        assert_eq!(event.encode(&(), &(value,)), log);
+
+        let event = EventEncoder::<(U256,), ()>::new([2; 32]);
+        let value = uint!("42");
+        let log = Log {
+            topics: Topics::from([
+                event.topic0,
+                hex!("000000000000000000000000000000000000000000000000000000000000002a"),
+            ]),
+            data: hex!("")[..].into(),
+        };
+        assert_eq!(event.decode(&log).unwrap(), ((value,), ()),);
+        assert_eq!(event.encode(&(value,), &()), log);
+
+        let event = EventEncoder::<(), ()>::new([2; 32]);
+        let log = Log {
+            topics: Topics::from([event.topic0]),
+            data: hex!("")[..].into(),
+        };
+        assert_eq!(event.decode(&log).unwrap(), ((), ()),);
+        assert_eq!(event.encode(&(), &()), log);
+    }
+
+    #[test]
     fn anonymous_event_with_indexed_dynamic_field() {
         let anon = AnonymousEventEncoder::<
             (Cow<str>, Cow<[(U256, (bool, Cow<Bytes<[u8]>>))]>),

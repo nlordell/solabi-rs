@@ -9,6 +9,7 @@ use crate::{
         DecodeError, Decoder,
     },
     encode::{Encode, Encoder, Size},
+    event::ParseError,
     function::Selector,
     log::{Log, Topics},
     primitive::Word,
@@ -167,11 +168,16 @@ impl EventEncoder {
     ///
     /// Note that non-primitive indexed fields will be replaced with a `bytes32`
     /// value equal to the hash of its ABI-encoded value.
-    pub fn decode(&self, log: &Log) -> Result<Vec<Value>, DecodeError> {
+    pub fn decode(&self, log: &Log) -> Result<Vec<Value>, ParseError> {
+        if log.topics.len() != self.topic_count() {
+            return Err(ParseError::Index);
+        }
+
         let mut topics = log.topics.into_iter();
         if let Some(selector) = self.selector {
-            if !matches!(topics.next(), Some(topic) if topic == selector) {
-                return Err(DecodeError::InvalidData);
+            let topic0 = topics.next().expect("unexpected missing topic");
+            if topic0 != selector {
+                return Err(ParseError::SelectorMismatch(topic0));
             }
         }
 
@@ -196,7 +202,7 @@ impl EventEncoder {
     /// Decodes a Solidity event from an Ethereum log, replacing non-primitive
     /// indexed fields with their default values (e.g. empty string for a
     /// `string` field).
-    pub fn decode_lossy(&self, log: &Log) -> Result<Vec<Value>, DecodeError> {
+    pub fn decode_lossy(&self, log: &Log) -> Result<Vec<Value>, ParseError> {
         let mut fields = self.decode(log)?;
         for ((_, kind), value) in self
             .fields
@@ -207,6 +213,12 @@ impl EventEncoder {
             *value = Value::default(kind);
         }
         Ok(fields)
+    }
+
+    /// Returns the number of topics of an Ethereum log that encodes this event.
+    fn topic_count(&self) -> usize {
+        (self.selector.is_some() as usize)
+            + self.fields.iter().filter(|(indexed, _)| *indexed).count()
     }
 }
 
@@ -427,6 +439,37 @@ mod tests {
 
         assert_eq!(encoder.encode(&fields).unwrap(), log);
         assert_eq!(encoder.decode(&log).unwrap(), fields);
+    }
+
+    #[test]
+    fn fails_to_decode_event_with_different_indices() {
+        let decl = |s: &str| {
+            let event = EventDescriptor::parse_declaration(s).unwrap();
+            let encoder = EventEncoder::new(&event).unwrap();
+            (event, encoder)
+        };
+
+        let (event, encoder) =
+            decl("event Transfer(address indexed to, address indexed from, uint256 value)");
+
+        let selector = event.selector().unwrap();
+        let fields = [
+            Value::Address(address!("0x0101010101010101010101010101010101010101")),
+            Value::Address(address!("0x0202020202020202020202020202020202020202")),
+            Value::Uint(Uint::new(256, uint!("4_200_000_000_000_000_000")).unwrap()),
+        ];
+        let log = encoder.encode(&fields).unwrap();
+
+        // Now try and parse the log to an event with the similar signature, but
+        // with a different set of indexed fields.
+        for signature in [
+            "event Transfer(address indexed to, address from, uint256 value)",
+            "event Transfer(address indexed to, address indexed from, uint256 indexed value)",
+        ] {
+            let (event, encoder) = decl(signature);
+            assert_eq!(selector, event.selector().unwrap());
+            assert!(matches!(encoder.decode(&log), Err(ParseError::Index)));
+        }
     }
 
     #[test]
