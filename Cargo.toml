@@ -1,6 +1,6 @@
 [package]
 name = "solabi"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Nicholas Rodrigues Lordello <nlordell@gmail.com>"]
 edition = "2021"
 description = "Solidity ABI implementation in Rust"
@@ -12,18 +12,13 @@ license = "MIT OR Apache-2.0"
 keywords = ["solidity", "abi", "ethereum"]
 categories = ["cryptography::cryptocurrencies"]
 
-[package.metadata.docs.rs]
-all-features = true
-
 [features]
-default = []
-macros = ["ethprim/macros"]
+sha3 = ["ethprim/sha3"]
 
 [dependencies]
-ethprim = { version = "0.1", features = ["keccak", "serde"] }
+ethprim = { version = "0.3", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
-ethprim = { version = "0.1", features = ["macros"] }
 hex-literal = "0.4"
 serde_json = "1"

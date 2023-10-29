@@ -20,17 +20,12 @@ solabi = "*"
 ```
 
 `solabi` depends on the [`ethprim`](https://docs.rs/ethprim) crate which gets
-re-exported as `solabi::ethprim`. This crate notably includes procedural macros
-for compile-time computed literals (for things like 256-bit integers and
-checksummed addresses) as well as compile-time computed Keccak-256 digests. To
-build with macro support:
-
-```toml
-solabi = { version = "*", features = ["macros"] }
-```
+re-exported for convenience. This crate notably includes macros for compile-time
+computed literals (for things like 256-bit integers and checksummed addresses)
+as well as compile-time computed Keccak-256 digests:
 
 ```rust
-use solabi::ethprim::*;
+use solabi::*;
 
 const DIGEST: Digest = keccak!("hello world!");
 const PRIME: I256 = int!("57896044618658097711785492504343953926634992332820282019728792003956564819949");

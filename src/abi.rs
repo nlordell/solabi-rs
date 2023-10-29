@@ -4,7 +4,7 @@ pub mod declaration;
 mod json;
 
 use crate::{function::Selector, primitive::Word, value::ValueKind};
-use ethprim::Keccak;
+use ethprim::Hasher;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter, Write as _};
 
@@ -60,7 +60,7 @@ impl FunctionDescriptor {
 
     /// Computes the selector the error type.
     pub fn selector(&self) -> Selector {
-        let mut hasher = Keccak::new();
+        let mut hasher = Hasher::new();
         write!(&mut hasher, "{}", self.canonical()).unwrap();
         selector(hasher)
     }
@@ -107,7 +107,7 @@ impl EventDescriptor {
             return None;
         }
 
-        let mut hasher = Keccak::new();
+        let mut hasher = Hasher::new();
         write!(&mut hasher, "{}", self.canonical()).unwrap();
         Some(topic(hasher))
     }
@@ -138,7 +138,7 @@ impl ErrorDescriptor {
 
     /// Computes the selector the error type.
     pub fn selector(&self) -> Selector {
-        let mut hasher = Keccak::new();
+        let mut hasher = Hasher::new();
         write!(&mut hasher, "{}", self.canonical()).unwrap();
         selector(hasher)
     }
@@ -276,12 +276,12 @@ where
     f.write_str(")")
 }
 
-fn selector(hasher: Keccak) -> Selector {
+fn selector(hasher: Hasher) -> Selector {
     let digest = hasher.finalize();
     Selector(digest[..4].try_into().unwrap())
 }
 
-fn topic(hasher: Keccak) -> [u8; 32] {
+fn topic(hasher: Hasher) -> [u8; 32] {
     *hasher.finalize()
 }
 

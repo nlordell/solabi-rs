@@ -15,7 +15,7 @@ use crate::{
     log::TopicHash as _,
     primitive::{Primitive, Word},
 };
-use ethprim::{Address, Keccak, I256, U256};
+use ethprim::{Address, Hasher, I256, U256};
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Shl, Shr},
@@ -158,7 +158,7 @@ impl Value {
             return word;
         }
 
-        let mut hasher = Keccak::new();
+        let mut hasher = Hasher::new();
 
         // For some odd reason, indexed bytes and strings behave differently
         // when they are alone than when they are elements in an array or fields
@@ -173,8 +173,8 @@ impl Value {
     }
 
     /// Writes packed value representation to the specified hasher.
-    fn topic_update_hash(&self, hasher: &mut Keccak) {
-        let hash_array = |a: &[Self], hasher: &mut Keccak| {
+    fn topic_update_hash(&self, hasher: &mut Hasher) {
+        let hash_array = |a: &[Self], hasher: &mut Hasher| {
             for i in a {
                 i.topic_update_hash(hasher)
             }

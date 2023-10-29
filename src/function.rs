@@ -25,17 +25,16 @@ impl Selector {
 
 /// Macro for creating a compile-time computed function selector.
 ///
-/// ```rust
+/// ```
 /// assert_eq!(
 ///     solabi::selector!("transfer(address,uint256)"),
 ///     solabi::Selector(*b"\xa9\x05\x9c\xbb"),
 /// );
 /// ```
-#[cfg(feature = "macros")]
 #[macro_export]
 macro_rules! selector {
-    ($signature:literal) => {
-        $crate::function::Selector::from_word($crate::ethprim::keccak!($signature).0)
+    ($signature:expr) => {
+        $crate::function::Selector::from_word($crate::ethprim::keccak!(($signature).as_bytes()).0)
     };
 }
 

@@ -4,12 +4,12 @@ use crate::{
     bytes::Bytes,
     primitive::{Primitive, Word},
 };
-use ethprim::Keccak;
+use ethprim::Hasher;
 use std::{
     array::TryFromSliceError,
     borrow::{Borrow, BorrowMut, Cow},
     fmt::{self, Debug, Formatter},
-    hash::{Hash, Hasher},
+    hash::{self, Hash},
     mem::MaybeUninit,
     ops::{Deref, DerefMut, Index, IndexMut},
     slice::SliceIndex,
@@ -159,7 +159,7 @@ impl DerefMut for Topics {
 impl Eq for Topics {}
 
 impl Hash for Topics {
-    fn hash<H: Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.as_slice().hash(state)
     }
 }
@@ -341,7 +341,7 @@ pub trait FromTopic {
 /// A trait for hashing fields for topic computation in dynamic types.
 pub trait TopicHash {
     /// Update the hasher with topic values.
-    fn update_hash(&self, hasher: &mut Keccak);
+    fn update_hash(&self, hasher: &mut Hasher);
 }
 
 impl<T> ToTopic for T
@@ -366,7 +366,7 @@ impl<T> TopicHash for T
 where
     T: Primitive,
 {
-    fn update_hash(&self, hasher: &mut Keccak) {
+    fn update_hash(&self, hasher: &mut Hasher) {
         hasher.update(self.to_word());
     }
 }
@@ -394,7 +394,7 @@ impl<T> TopicHash for Cow<'_, T>
 where
     T: TopicHash + ToOwned + ?Sized,
 {
-    fn update_hash(&self, hasher: &mut Keccak) {
+    fn update_hash(&self, hasher: &mut Hasher) {
         self.as_ref().update_hash(hasher);
     }
 }
@@ -406,7 +406,7 @@ macro_rules! impl_topic_for_ref {
         }
     };
     (update_hash) => {
-        fn update_hash(&self, hasher: &mut Keccak) {
+        fn update_hash(&self, hasher: &mut Hasher) {
             (**self).update_hash(hasher)
         }
     };
@@ -425,7 +425,7 @@ impl<T, const N: usize> TopicHash for [T; N]
 where
     T: TopicHash,
 {
-    fn update_hash(&self, hasher: &mut Keccak) {
+    fn update_hash(&self, hasher: &mut Hasher) {
         self.as_slice().update_hash(hasher)
     }
 }
@@ -449,7 +449,7 @@ where
     T: TopicHash,
 {
     fn to_topic(&self) -> Word {
-        let mut hasher = Keccak::new();
+        let mut hasher = Hasher::new();
         self.update_hash(&mut hasher);
         *hasher.finalize()
     }
@@ -459,7 +459,7 @@ impl<T> TopicHash for [T]
 where
     T: TopicHash,
 {
-    fn update_hash(&self, hasher: &mut Keccak) {
+    fn update_hash(&self, hasher: &mut Hasher) {
         for item in self {
             item.update_hash(hasher);
         }
@@ -499,7 +499,7 @@ impl<T> TopicHash for Vec<T>
 where
     T: TopicHash,
 {
-    fn update_hash(&self, hasher: &mut Keccak) {
+    fn update_hash(&self, hasher: &mut Hasher) {
         self.as_slice().update_hash(hasher)
     }
 }
@@ -511,7 +511,7 @@ impl ToTopic for str {
 }
 
 impl TopicHash for str {
-    fn update_hash(&self, hasher: &mut Keccak) {
+    fn update_hash(&self, hasher: &mut Hasher) {
         Bytes(self.as_bytes()).update_hash(hasher)
     }
 }
@@ -537,7 +537,7 @@ impl FromTopic for String {
 }
 
 impl TopicHash for String {
-    fn update_hash(&self, hasher: &mut Keccak) {
+    fn update_hash(&self, hasher: &mut Hasher) {
         self.as_str().update_hash(hasher);
     }
 }
@@ -549,7 +549,7 @@ macro_rules! impl_to_from_topic_for_tuple {
             $($t: TopicHash,)*
         {
             fn to_topic(&self) -> Word {
-                let mut hasher = Keccak::new();
+                let mut hasher = Hasher::new();
                 self.update_hash(&mut hasher);
                 *hasher.finalize()
             }
@@ -570,7 +570,7 @@ macro_rules! impl_to_from_topic_for_tuple {
         where
             $($t: TopicHash,)*
         {
-            fn update_hash(&self, hasher: &mut Keccak) {
+            fn update_hash(&self, hasher: &mut Hasher) {
                 let ($($t,)*) = self;
                 $($t.update_hash(hasher);)*
             }
