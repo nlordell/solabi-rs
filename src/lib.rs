@@ -115,6 +115,7 @@ pub mod bytes;
 pub mod constructor;
 pub mod decode;
 pub mod encode;
+pub mod packed;
 pub mod error;
 pub mod event;
 mod fmt;
