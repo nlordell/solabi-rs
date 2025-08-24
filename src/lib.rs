@@ -116,6 +116,7 @@ pub mod constructor;
 pub mod decode;
 pub mod encode;
 pub mod packed;
+pub use self::packed::encode_packed;
 pub mod error;
 pub mod event;
 mod fmt;
