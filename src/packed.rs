@@ -18,7 +18,7 @@ pub fn encode_packed_to<T>(buffer: &mut [u8], value: &T) -> Result<(), BufferSiz
 where
     T: EncodePacked,
 {
-    if buffer.len() < value.packed_size() {
+    if buffer.len() != value.packed_size() {
         return Err(BufferSizeError);
     }
 
@@ -58,30 +58,50 @@ where
     fn encode_packed(&self, out: &mut [u8]) {
         let mut offset = 0;
         for item in self {
-            item.encode_packed(&mut out[offset..offset + item.packed_size()]);
-            offset += item.packed_size();
+            let end = offset + item.packed_size();
+            item.encode_packed(&mut out[offset..end]);
+            offset = end;
         }
     }
+}
+
+macro_rules! impl_encode_packed_for_ref {
+    () => {
+        fn packed_size(&self) -> usize {
+            (**self).packed_size()
+        }
+
+        fn encode_packed(&self, out: &mut [u8]) {
+            (**self).encode_packed(out)
+        }
+    };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hex_literal::hex;
 
     #[test]
     fn encode_basic_types() {
-        assert_eq!(encode_packed(&0u8), vec![0]);
-        assert_eq!(encode_packed(&255u8), vec![255]);
-        assert_eq!(encode_packed(&0x1234u16), vec![0x12, 0x34]);
-        assert_eq!(encode_packed(&0x01020304i32), vec![0x01, 0x02, 0x03, 0x04]);
-        assert_eq!(encode_packed(&-1i32), vec![0xff, 0xff, 0xff, 0xff]);
+        assert_eq!(encode_packed(&0u8), hex!("00"));
+        assert_eq!(encode_packed(&255u8), hex!("ff"));
+        assert_eq!(encode_packed(&0x1234u16), hex!("1234"));
+        assert_eq!(encode_packed(&0x01020304i32), hex!("01020304"));
+        assert_eq!(encode_packed(&-1i32), hex!("ffffffff"));
         let encoded = encode_packed(&1usize);
-        assert!(encoded == vec![0, 0, 0, 1] || encoded == vec![0, 0, 0, 0, 0, 0, 0, 1]);
-        assert_eq!(encode_packed(&-128i8), vec![0x80]);
-        assert_eq!(encode_packed(&127i8), vec![0x7f]);
+        // Generate hex literal of length based on usize
+        let usize_result = if std::mem::size_of::<usize>() == 4 {
+            hex!("00000001").to_vec()
+        } else {
+            hex!("0000000000000001").to_vec()
+        };
+        assert!(encoded == usize_result);
+        assert_eq!(encode_packed(&-128i8), hex!("80"));
+        assert_eq!(encode_packed(&127i8), hex!("7f"));
 
         // Tests for array
 
-        assert_eq!(encode_packed(&[1u8, 2, 3]), vec![1, 2, 3]);
+        assert_eq!(encode_packed(&[1u8, 2, 3]), hex!("010203"));
     }
 }

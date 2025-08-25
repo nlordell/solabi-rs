@@ -116,7 +116,6 @@ pub mod constructor;
 pub mod decode;
 pub mod encode;
 pub mod packed;
-pub use self::packed::encode_packed;
 pub mod error;
 pub mod event;
 mod fmt;
@@ -143,6 +142,7 @@ pub mod prelude {
 pub use self::{
     decode::{decode, decode_with_prefix, decode_with_selector},
     encode::{encode, encode_to, encode_with_prefix, encode_with_selector},
+    packed::encode_packed,
     prelude::*,
 };
 pub use ethprim::{self, address, digest, int, keccak, uint};
