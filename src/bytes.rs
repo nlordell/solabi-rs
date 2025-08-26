@@ -1,11 +1,7 @@
 //! Solidity bytes type.
 
 use crate::{
-    decode::{Decode, DecodeError, Decoder},
-    encode::{Encode, Encoder, Size},
-    fmt::Hex,
-    log::{FromTopic, ToTopic, TopicHash},
-    primitive::{Primitive, Word},
+    decode::{Decode, DecodeError, Decoder}, encode::{Encode, Encoder, Size}, encode_packed::EncodePacked, fmt::Hex, log::{FromTopic, ToTopic, TopicHash}, primitive::{Primitive, Word}
 };
 use ethprim::Hasher;
 use std::{
@@ -183,6 +179,18 @@ impl Encode for Bytes<&'_ [u8]> {
     fn encode(&self, encoder: &mut Encoder) {
         encoder.write(&self.len());
         encoder.write_bytes(self);
+    }
+}
+
+impl<T> EncodePacked for Bytes<T>
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    fn packed_size(&self) -> usize {
+        self.as_bytes().len()
+    }
+    fn encode_packed(&self, out: &mut [u8]) {
+        out[..self.as_bytes().len()].copy_from_slice(self.as_bytes());
     }
 }
 

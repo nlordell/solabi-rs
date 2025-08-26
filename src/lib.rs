@@ -115,7 +115,7 @@ pub mod bytes;
 pub mod constructor;
 pub mod decode;
 pub mod encode;
-pub mod packed;
+pub mod encode_packed;
 pub mod error;
 pub mod event;
 mod fmt;
@@ -142,7 +142,7 @@ pub mod prelude {
 pub use self::{
     decode::{decode, decode_with_prefix, decode_with_selector},
     encode::{encode, encode_to, encode_with_prefix, encode_with_selector},
-    packed::encode_packed,
+    encode_packed::{encode_packed, encode_packed_to},
     prelude::*,
 };
 pub use ethprim::{self, address, digest, int, keccak, uint};
@@ -180,6 +180,7 @@ mod tests {
             uint!("42"),
             hex!("000000000000000000000000000000000000000000000000000000000000002a"),
         );
+        assert_eq!(encode_packed(&uint!("42")), hex!("000000000000000000000000000000000000000000000000000000000000002a"));
     }
 
     #[test]
@@ -192,6 +193,9 @@ mod tests {
                  68656c6c6f000000000000000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(encode_packed(&("hello".to_owned(),)), hex!(
+            "68656c6c6f"
+        ));
 
         assert_encoding!(
             "hello".to_owned(),
@@ -200,6 +204,9 @@ mod tests {
                  68656c6c6f000000000000000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(encode_packed(&"hello".to_owned()), hex!(
+            "68656c6c6f"
+        ));
     }
 
     #[test]
@@ -225,10 +232,25 @@ mod tests {
                  48656c6c6f2c20776f726c642100000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                291_i32,
+                vec![1110_i32, 1929_i32],
+                 Bytes(*b"1234567890"),
+                "Hello, world!".to_owned(),
+            )),
+            hex!(
+                "0000012300000456000007893132333435363738393048656c6c6f2c20776f726c6421"
+            ),
+        );
 
         assert_encoding!(
             98127491_i32,
             hex!("0000000000000000000000000000000000000000000000000000000005d94e83"),
+        );
+        assert_eq!(
+            encode_packed(&98127491_i32),
+            hex!("05d94e83"),
         );
 
         assert_encoding!(
@@ -239,6 +261,15 @@ mod tests {
             hex!(
                 "000000000000000000000000000000000000000000000000000000000004f21c
                  000000000000000000000000cd2a3d9f938e13cd947ec05abc7fe734df8dd826"
+            ),
+        );
+        assert_eq!(
+            encode_packed(&(
+                324124_i32,
+                address!("0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826")
+            )),
+            hex!(
+                "0004f21ccd2a3d9f938e13cd947ec05abc7fe734df8dd826"
             ),
         );
     }
@@ -267,6 +298,20 @@ mod tests {
                  000000000000000000000000fffffffffffffffffffffffffffffffffffffffb"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                10_i32,
+                u16::MAX - 1,
+                0x121212_i32,
+                -1_i32,
+                Bytes(hex!("1babab")),
+                true,
+                address!(~"0xfffffffffffffffffffffffffffffffffffffffb")
+            )),
+            hex!(
+                "0000000afffe00121212ffffffff1babab01fffffffffffffffffffffffffffffffffffffffb"
+            ),
+        );
 
         assert_encoding!(
             (
@@ -291,18 +336,63 @@ mod tests {
                  63616263617364666a6b6c000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                "abcdef".to_owned(),
+                Bytes(*b"abcde\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
+                "abcdefabcdefgehabcabcasdfjklabcdefabcedefghabcabcasdfjklabcdefab\
+                 cdefghabcabcasdfjklabcdeefabcdefghabcabcasdefjklabcdefabcdefghab\
+                 cabcasdfjkl"
+                    .to_owned(),
+            )),
+            hex!(
+               "616263646566
+                6162636465000000000000000000000000000000
+                616263646566616263646566676568616263616263617364666a6b6c61626364
+                6566616263656465666768616263616263617364666a6b6c6162636465666162
+                636465666768616263616263617364666a6b6c61626364656566616263646566
+                676861626361626361736465666a6b6c61626364656661626364656667686162
+                63616263617364666a6b6c"
+            ),
+        );
+
 
         assert_encoding!(
             0_u8,
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
         );
+        assert_eq!(
+            encode_packed(&(
+                0_u8
+            )),
+            hex!(
+                "00"
+            ),
+        );
+
         assert_encoding!(
             1_u8,
             hex!("0000000000000000000000000000000000000000000000000000000000000001"),
         );
+        assert_eq!(
+            encode_packed(&(
+                1_u8
+            )),
+            hex!(
+                "01"
+            ),
+        );
         assert_encoding!(
             2_u8,
             hex!("0000000000000000000000000000000000000000000000000000000000000002"),
+        );
+             assert_eq!(
+            encode_packed(&(
+                2_u8
+            )),
+            hex!(
+                "02"
+            ),
         );
 
         assert_encoding!(
@@ -323,6 +413,19 @@ mod tests {
                  0000000000000000000000000000000000000000000000000000000000000001"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                Bytes([0_u8, 0, 0, 10]),
+                Bytes(hex!("f1f20000")),
+                0xff_u8,
+                0xff_u8,
+                -1_i8,
+                1_i8,
+            )),
+            hex!(
+                "0000000af1f20000ffffff01"
+            ),
+        );
 
         assert_encoding!(
             (
@@ -338,6 +441,16 @@ mod tests {
                  00000000000000000000000000000000000000000000000000000000fffffffe
                  00000000000000000000000000000000000000000000000000000000ffffffff
                  0000000000000000000000000000000000000000000000000000000100000000"
+            ),
+        );
+        assert_eq!(
+            encode_packed(&(
+                10_i32,
+                vec![0xfffffffe_u64, 0xffffffff, 0x100000000],
+                11_i32
+            )),
+            hex!(
+                "0000000a00000000fffffffe00000000ffffffff00000001000000000000000b"
             ),
         );
 
@@ -356,6 +469,14 @@ mod tests {
                  0000000000000000000000000000000000000000000000000000000000000002
                  0000000000000000000000000000000000000000000000000000000000000004
                  0000000000000000000000000000000000000000000000000000000000000005"
+            ),
+        );
+        assert_eq!(
+            encode_packed(&(
+                (10_i32, [vec![7_i16, 0x0506, -1], vec![4, 5]], 11_i32)
+            )),
+            hex!(
+                "0000000a00070506ffff000400050000000b"
             ),
         );
 
@@ -384,6 +505,22 @@ mod tests {
                  6d6e6f7071737475767761626364656768696a6b6c6d6f707172737475767700"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                10_i32,
+                vec![
+                    "abcabcdefghjklmnopqrsuvwabcdefgijklmnopqrstuwabcdefgijklmnoprstuvw".to_owned(),
+                    "abcdefghijklmnopqrtuvwabcfghijklmnopqstuvwabcdeghijklmopqrstuvw".to_owned(),
+                ],
+                11_i32,
+            )),
+            hex!(
+                "0000000a61626361626364656667686a6b6c6d6e6f707172737576776162636465666769
+                 6a6b6c6d6e6f7071727374757761626364656667696a6b6c6d6e6f7072737475
+                 76776162636465666768696a6b6c6d6e6f70717274757677616263666768696a6b6c
+                 6d6e6f7071737475767761626364656768696a6b6c6d6f70717273747576770000000b"
+            ),
+        );
 
         assert_encoding!(
             (
@@ -402,6 +539,19 @@ mod tests {
                  3132333435363738393061000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                "123456789012345678901234567890a".to_owned(),
+                "ffff123456789012345678901234567890afffffffff123456789012345678901234567890a"
+                    .to_owned(),
+            )),
+            hex!(
+                "31323334353637383930313233343536373839303132333435363738393061
+                 6666666631323334353637383930313233343536373839303132333435363738
+                 3930616666666666666666663132333435363738393031323334353637383930
+                 3132333435363738393061"
+            ),
+        );
 
         assert_encoding!(
             [
@@ -413,6 +563,18 @@ mod tests {
                 "000000000000000000000000ffffffffffffffffffffffffffffffffffffffff
                  000000000000000000000000fffffffffffffffffffffffffffffffffffffffe
                  000000000000000000000000fffffffffffffffffffffffffffffffffffffffd"
+            ),
+        );
+        assert_eq!(
+            encode_packed(&(
+                address!(~"0xffffffffffffffffffffffffffffffffffffffff"),
+                address!(~"0xfffffffffffffffffffffffffffffffffffffffe"),
+                address!(~"0xfffffffffffffffffffffffffffffffffffffffd"),
+            )),
+            hex!(
+                "ffffffffffffffffffffffffffffffffffffffff
+                 fffffffffffffffffffffffffffffffffffffffe
+                 fffffffffffffffffffffffffffffffffffffffd"
             ),
         );
 
@@ -430,6 +592,20 @@ mod tests {
                  0000000000000000000000000000000000000000000000000000000000000003"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                vec![
+                    address!("0x0000000000000000000000000000000000000001"),
+                    address!("0x0000000000000000000000000000000000000002"),
+                    address!("0x0000000000000000000000000000000000000003"),
+                ],
+            )),
+            hex!(
+                "0000000000000000000000000000000000000001
+                 0000000000000000000000000000000000000002
+                 0000000000000000000000000000000000000003"
+            ),
+        );
 
         assert_encoding!(
             (vec![-1_i32, 2, -3, 4, -5, 6, -7, 8],),
@@ -444,6 +620,15 @@ mod tests {
                  0000000000000000000000000000000000000000000000000000000000000006
                  fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff9
                  0000000000000000000000000000000000000000000000000000000000000008"
+            ),
+        );
+        assert_eq!(
+            encode_packed(&(
+                vec![-1_i32, 2, -3, 4, -5, 6, -7, 8],
+            )),
+            hex!(
+                "ffffffff00000002fffffffd00000004fffffffb
+                 00000006fffffff900000008"
             ),
         );
 
@@ -463,6 +648,7 @@ mod tests {
                  001c08ab857afe5a9633887e7a4e2a429d1d8d42b3de648b0000000000000000"
             ),
         );
+        
 
         assert_encoding!(
             (
@@ -489,6 +675,14 @@ mod tests {
                  6162636465660000000000000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                "abcdef".to_owned(),
+            )),
+            hex!(
+                "616263646566"
+            ),
+        );
         assert_encoding!(
             (
                 "abcdefgggggggggggggggggggggggggggggggggggggggghhheeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
@@ -502,18 +696,46 @@ mod tests {
                  6565656565656565656565656565650000000000000000000000000000000000"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                "abcdefgggggggggggggggggggggggggggggggggggggggghhheeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_owned(),
+            )),
+            hex!(
+                "6162636465666767676767676767676767676767676767676767676767676767
+                 6767676767676767676767676767686868656565656565656565656565656565
+                 656565656565656565656565656565"
+            ),
+        );
 
         assert_encoding!(
             0_i32,
             hex!("0000000000000000000000000000000000000000000000000000000000000000"),
         );
+        assert_eq!(
+            encode_packed(&0_i32),
+            hex!(
+                "00000000"
+            ),
+        );
         assert_encoding!(
             1_i32,
             hex!("0000000000000000000000000000000000000000000000000000000000000001"),
         );
+         assert_eq!(
+            encode_packed(&1_i32),
+            hex!(
+                "00000001"
+            ),
+        );
         assert_encoding!(
             7_i32,
             hex!("0000000000000000000000000000000000000000000000000000000000000007"),
+        );
+        assert_eq!(
+            encode_packed(&7_i32),
+            hex!(
+                "00000007"
+            ),
         );
 
         assert_encoding!(
@@ -540,6 +762,20 @@ mod tests {
                  0000000000000000000000000000000000000000000000000000000000000000
                  0000000000000000000000000000000000000000000000000000000000000000
                  000000000000000000000000000000000000000000000000000000000000000d"
+            ),
+        );
+        assert_eq!(
+            encode_packed(&(
+                7_i32,
+                (
+                    8_i32,
+                    9_i32,
+                    vec![(11_i32, 0_i32), (12, 0), (0, 13)],
+                    10_i32,
+                ),
+            )),
+            hex!(
+                "0000000700000008000000090000000b000000000000000c00000000000000000000000d0000000a"
             ),
         );
 
@@ -598,8 +834,32 @@ mod tests {
                  0000000000000000000000000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(
+            encode_packed(&(
+                7_i32,
+                [
+                    (
+                        address!("0x1111111111111111111111111111111111111111"),
+                        vec![(0x11_i32, 1_i32, 0x12_i32)],
+                    ),
+                    Default::default(),
+                ],
+                vec![
+                    Default::default(),
+                    (
+                        address!("0x0000000000000000000000000000000000001234"),
+                        vec![(0_i32, 0_i32, 0_i32), (0x21, 2, 0x22), (0, 0, 0)]
+                    ),
+                ],
+                8_i32,
+            )),
+            hex!(
+                "00000007111111111111111111111111111111111111111100000011000000010000001200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000123400000000000000000000000000000021000000020000002200000000000000000000000000000008"
+            )
+        );
 
         assert_encoding!((), hex!(""));
+        assert_eq!(encode_packed(&()), hex!(""));
         assert_encoding!(
             (vec![true, false, true, false], [true, false, true, false]),
             hex!(
@@ -615,6 +875,7 @@ mod tests {
                  0000000000000000000000000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(encode_packed(&(vec![true, false, true, false], [true, false, true, false])), hex!("0100010001000100"));
 
         macro_rules! bytes_nn_arrays {
             ([$($size:literal),*] { $($nn:literal),* }) => {
@@ -717,6 +978,7 @@ mod tests {
                  0000000000000000000000000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(encode_packed(&("".to_owned(), 3_i32, "".to_owned())), hex!("00000003"));
 
         assert_encoding!(
             ("abc".to_owned(), 7_i32, "def".to_owned()),
@@ -730,5 +992,6 @@ mod tests {
                  6465660000000000000000000000000000000000000000000000000000000000"
             ),
         );
+        assert_eq!(encode_packed(&("abc".to_owned(), 7_i32, "def".to_owned())), hex!("61626300000007646566"));
     }
 }

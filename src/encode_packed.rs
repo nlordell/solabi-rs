@@ -1,6 +1,8 @@
 //! Module implementing packed encoding.
 
 
+use ethprim::{Address, Digest, I256, U256};
+
 use crate::encode::{BufferSizeError};
 use std::borrow::Cow;
 
@@ -153,8 +155,9 @@ macro_rules! impl_encode_packed_for_tuple {
             fn encode_packed(&self, out: &mut [u8]) {
                 let ($($t,)*) = self;
                 let mut offset = 0;
+                let mut end = 0;
                 $(
-                    let end = offset + $t.packed_size();
+                    end = offset + $t.packed_size();
                     $t.encode_packed(&mut out[offset..end]);
                     offset = end;
                 )*
@@ -204,6 +207,55 @@ impl_encode_packed_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, 
 impl_encode_packed_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE }
 impl_encode_packed_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF }
 
+macro_rules! impl_encode_packed_for_i256 {
+    ($($t:ty,)*) => {$(
+        impl EncodePacked for $t {
+            fn packed_size(&self) -> usize {
+                32
+            }
+
+            fn encode_packed(&self, out: &mut [u8]) {
+                self.to_be_bytes().encode_packed(out)
+            }
+        }
+    )*};
+}
+
+impl_encode_packed_for_i256! {
+    I256,
+    U256,
+}
+
+impl EncodePacked for bool {
+    fn packed_size(&self) -> usize {
+        1
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        out[0] = *self as u8;
+    }
+}
+
+impl EncodePacked for Address {
+    fn packed_size(&self) -> usize {
+        20
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        out.copy_from_slice(&**self);
+    }
+}
+
+impl EncodePacked for Digest {
+    fn packed_size(&self) -> usize {
+        32
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        out.copy_from_slice(&**self);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,7 +279,7 @@ mod tests {
         assert_eq!(encode_packed(&-128i8), hex!("80"));
         assert_eq!(encode_packed(&127i8), hex!("7f"));
 
-        // Tests for arra
+        // Tests for arrays
         assert_eq!(encode_packed(&[1u8, 2, 3]), hex!("010203"));
 
         // Tests for strings and variants
@@ -236,5 +288,6 @@ mod tests {
         // Tests for tuples
         assert_eq!(encode_packed(&(1u8, 2u8)), hex!("0102"));
         assert_eq!(encode_packed(&(1u8, 2u8, 3u8)), hex!("010203"));
+        assert_eq!(encode_packed(&(1u8, 2u16, 3u32)), hex!("01000200000003"));
     }
 }
