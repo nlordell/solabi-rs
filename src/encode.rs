@@ -249,7 +249,7 @@ impl Error for BufferSizeError {}
 
 /// Pads the specified size to a 32-byte boundry.
 fn pad32(value: usize) -> usize {
-    ((value + 31) / 32) * 32
+    value.div_ceil(32) * 32
 }
 
 /// Splits an array in-place returning a mutable slice to the chunk that was

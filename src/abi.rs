@@ -45,7 +45,7 @@ pub struct FunctionDescriptor {
 
 impl FunctionDescriptor {
     /// Returns the error decriptor's canonical formatter.
-    pub fn canonical(&self) -> Canonical<Self> {
+    pub fn canonical(&self) -> Canonical<'_, Self> {
         Canonical(self)
     }
 
@@ -54,7 +54,7 @@ impl FunctionDescriptor {
     /// This is different than its canonical representation in that it also
     /// includes the return types. Function selectors are computed by hashing
     /// the canonical representation without the return types.
-    pub fn signature(&self) -> Signature {
+    pub fn signature(&self) -> Signature<'_> {
         Signature(self)
     }
 
@@ -97,7 +97,7 @@ pub struct EventDescriptor {
 
 impl EventDescriptor {
     /// Returns the error decriptor's canonical formatter.
-    pub fn canonical(&self) -> Canonical<Self> {
+    pub fn canonical(&self) -> Canonical<'_, Self> {
         Canonical(self)
     }
 
@@ -132,7 +132,7 @@ pub struct ErrorDescriptor {
 
 impl ErrorDescriptor {
     /// Returns the error decriptor's canonical formatter.
-    pub fn canonical(&self) -> Canonical<Self> {
+    pub fn canonical(&self) -> Canonical<'_, Self> {
         Canonical(self)
     }
 
