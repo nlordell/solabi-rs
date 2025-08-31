@@ -1,7 +1,12 @@
 //! Solidity bytes type.
 
 use crate::{
-    decode::{Decode, DecodeError, Decoder}, encode::{Encode, Encoder, Size}, encode_packed::EncodePacked, fmt::Hex, log::{FromTopic, ToTopic, TopicHash}, primitive::{Primitive, Word}
+    decode::{Decode, DecodeError, Decoder},
+    encode::{Encode, Encoder, Size},
+    encode_packed::EncodePacked,
+    fmt::Hex,
+    log::{FromTopic, ToTopic, TopicHash},
+    primitive::{Primitive, Word},
 };
 use ethprim::Hasher;
 use std::{

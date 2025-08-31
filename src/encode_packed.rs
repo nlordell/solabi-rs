@@ -1,23 +1,32 @@
 //! Module implementing packed encoding.
 
-
 use ethprim::{Address, Digest, I256, U256};
 
-use crate::encode::{BufferSizeError};
+use crate::encode::BufferSizeError;
 use std::borrow::Cow;
 
+/// Represents a packed-encodable type
 pub trait EncodePacked {
-    fn encode_packed(&self, out: &mut [u8]);
-
+    /// Returns the packed size for the type
     fn packed_size(&self) -> usize;
+
+    /// Writes the type's data to the specified buffer.
+    ///
+    /// # Panics
+    ///
+    /// Encoding values that do not match what is returned by [`Encode::size`]
+    /// may cause the encoding to panic.
+    fn encode_packed(&self, out: &mut [u8]);
 }
 
+/// Packed-encodes a value.
 pub fn encode_packed<T: EncodePacked>(value: &T) -> Vec<u8> {
     let mut buf = vec![0u8; value.packed_size()];
     encode_packed_to(&mut buf, value).unwrap();
     buf
 }
 
+/// Packed-encodes a value to the specified buffer.
 pub fn encode_packed_to<T>(buffer: &mut [u8], value: &T) -> Result<(), BufferSizeError>
 where
     T: EncodePacked,
@@ -46,10 +55,7 @@ macro_rules! impl_encode_packed_for_integer {
     };
 }
 
-impl_encode_packed_for_integer!(
-    u8, u16, u32, u64, u128, usize,
-    i8, i16, i32, i64, i128, isize,
-);
+impl_encode_packed_for_integer!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize,);
 
 macro_rules! impl_encode_packed_for_ref {
     () => {
@@ -93,7 +99,6 @@ where
         self.as_slice().encode_packed(out)
     }
 }
-
 
 impl<T, const N: usize> EncodePacked for &'_ [T; N]
 where
@@ -152,12 +157,15 @@ macro_rules! impl_encode_packed_for_tuple {
                 0 $(+ $t.packed_size())*
             }
 
+            #[allow(unused_assignments)]
             fn encode_packed(&self, out: &mut [u8]) {
                 let ($($t,)*) = self;
+                #[allow(unused_mut)]
                 let mut offset = 0;
-                let mut end = 0;
+
                 $(
-                    end = offset + $t.packed_size();
+
+                    let end = offset + $t.packed_size();
                     $t.encode_packed(&mut out[offset..end]);
                     offset = end;
                 )*
@@ -270,10 +278,10 @@ mod tests {
         assert_eq!(encode_packed(&-1i32), hex!("ffffffff"));
         let encoded = encode_packed(&1usize);
         // Generate hex literal of length based on usize
-        let usize_result = if std::mem::size_of::<usize>() == 4 {
-            hex!("00000001").to_vec()
-        } else {
-            hex!("0000000000000001").to_vec()
+        let usize_result = {
+            let mut bytes = [0_u8; std::mem::size_of::<usize>()];
+            *bytes.last_mut().unwrap() = 1;
+            bytes
         };
         assert!(encoded == usize_result);
         assert_eq!(encode_packed(&-128i8), hex!("80"));
