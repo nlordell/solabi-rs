@@ -103,11 +103,7 @@ pub struct FunctionEncoder<P, R> {
     _marker: PhantomData<*const (P, R)>,
 }
 
-impl<P, R> FunctionEncoder<P, R>
-where
-    P: Encode + Decode,
-    R: Encode + Decode,
-{
+impl<P, R> FunctionEncoder<P, R> {
     /// Creates a new function encoder from a selector.
     pub const fn new(selector: Selector) -> Self {
         Self {
@@ -115,22 +111,42 @@ where
             _marker: PhantomData,
         }
     }
+}
 
+impl<P, R> FunctionEncoder<P, R>
+where
+    P: Encode,
+{
     /// Encodes a function call for the specified parameters.
     pub fn encode_params(&self, params: &P) -> Vec<u8> {
         crate::encode_with_selector(self.selector, params)
     }
+}
 
+impl<P, R> FunctionEncoder<P, R>
+where
+    P: Decode,
+{
     /// Decodes a function call into its parameters.
     pub fn decode_params(&self, data: &[u8]) -> Result<P, DecodeError> {
         crate::decode_with_selector(self.selector, data)
     }
+}
 
+impl<P, R> FunctionEncoder<P, R>
+where
+    R: Encode,
+{
     /// Encodes function return data.
     pub fn encode_returns(&self, returns: &R) -> Vec<u8> {
         crate::encode(returns)
     }
+}
 
+impl<P, R> FunctionEncoder<P, R>
+where
+    R: Decode,
+{
     /// Decodes function return data.
     pub fn decode_returns(&self, data: &[u8]) -> Result<R, DecodeError> {
         crate::decode(data)
