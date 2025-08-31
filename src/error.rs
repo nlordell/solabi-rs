@@ -17,10 +17,7 @@ pub struct ErrorEncoder<D> {
     _marker: PhantomData<*const D>,
 }
 
-impl<D> ErrorEncoder<D>
-where
-    D: Encode + Decode,
-{
+impl<D> ErrorEncoder<D> {
     /// Creates a new error encoder from a selector.
     pub const fn new(selector: Selector) -> Self {
         Self {
@@ -28,12 +25,22 @@ where
             _marker: PhantomData,
         }
     }
+}
 
+impl<D> ErrorEncoder<D>
+where
+    D: Encode,
+{
     /// Encodes a Solidity error for the specified data.
     pub fn encode(&self, data: &D) -> Vec<u8> {
         crate::encode_with_selector(self.selector, data)
     }
+}
 
+impl<D> ErrorEncoder<D>
+where
+    D: Decode,
+{
     /// Decodes a Solidity error from the return bytes call into its data.
     pub fn decode(&self, data: &[u8]) -> Result<D, DecodeError> {
         crate::decode_with_selector(self.selector, data)

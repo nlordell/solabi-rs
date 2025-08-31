@@ -35,7 +35,6 @@ pub struct EventEncoder<I, D> {
 impl<I, D> EventEncoder<I, D>
 where
     I: Indexed,
-    D: Encode + Decode,
 {
     /// Creates a new typed event from a topic0.
     pub const fn new(topic0: Word) -> Self {
@@ -44,7 +43,13 @@ where
             _marker: PhantomData,
         }
     }
+}
 
+impl<I, D> EventEncoder<I, D>
+where
+    I: Indexed,
+    D: Encode,
+{
     /// Encode event data into an EVM log.
     pub fn encode(&self, indices: &I, data: &D) -> Log<'_> {
         Log {
@@ -52,7 +57,13 @@ where
             data: crate::encode(data).into(),
         }
     }
+}
 
+impl<I, D> EventEncoder<I, D>
+where
+    I: Indexed,
+    D: Decode,
+{
     /// Decode event data from an EVM log.
     pub fn decode(&self, log: &Log) -> Result<(I, D), ParseError> {
         let (topic0, indices) = I::from_topics(&log.topics)?;
@@ -79,13 +90,18 @@ pub struct AnonymousEventEncoder<I, D>(PhantomData<*const (I, D)>);
 impl<I, D> AnonymousEventEncoder<I, D>
 where
     I: IndexedAnonymous,
-    D: Encode + Decode,
 {
     /// Creates a new anonymous event.
     pub fn new() -> Self {
         Self(PhantomData)
     }
+}
 
+impl<I, D> AnonymousEventEncoder<I, D>
+where
+    I: IndexedAnonymous,
+    D: Encode,
+{
     /// Encode event data into an EVM log.
     pub fn encode(&self, indices: &I, data: &D) -> Log<'_> {
         Log {
@@ -93,7 +109,13 @@ where
             data: crate::encode(data).into(),
         }
     }
+}
 
+impl<I, D> AnonymousEventEncoder<I, D>
+where
+    I: IndexedAnonymous,
+    D: Decode,
+{
     /// Decode event data from an EVM log.
     pub fn decode(&self, log: &Log) -> Result<(I, D), ParseError> {
         let indices = I::from_topics_anonymous(&log.topics)?;
@@ -106,7 +128,6 @@ where
 impl<I, D> Debug for AnonymousEventEncoder<I, D>
 where
     I: IndexedAnonymous,
-    D: Encode + Decode,
 {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         f.debug_tuple("AnonymousEventEncoder").finish()
@@ -116,7 +137,6 @@ where
 impl<I, D> Default for AnonymousEventEncoder<I, D>
 where
     I: IndexedAnonymous,
-    D: Encode + Decode,
 {
     fn default() -> Self {
         Self::new()

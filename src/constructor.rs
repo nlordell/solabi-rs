@@ -20,7 +20,6 @@ pub struct ConstructorEncoder<B, P> {
 impl<B, P> ConstructorEncoder<B, P>
 where
     B: AsRef<[u8]>,
-    P: Encode + Decode,
 {
     /// Creates a new constructor encoder from a selector.
     pub const fn new(code: B) -> Self {
@@ -29,7 +28,13 @@ where
             _marker: PhantomData,
         }
     }
+}
 
+impl<B, P> ConstructorEncoder<B, P>
+where
+    B: AsRef<[u8]>,
+    P: Encode,
+{
     /// Encodes a contract deployment for the specified parameters.
     pub fn encode(&self, data: &P) -> Vec<u8> {
         crate::encode_with_prefix(self.code.as_ref(), data)
@@ -39,7 +44,13 @@ where
     pub fn encode_params(&self, data: &P) -> Vec<u8> {
         crate::encode(data)
     }
+}
 
+impl<B, P> ConstructorEncoder<B, P>
+where
+    B: AsRef<[u8]>,
+    P: Decode,
+{
     /// Decodes the contract deployment parameters from the specified calldata.
     pub fn decode(&self, data: &[u8]) -> Result<P, DecodeError> {
         crate::decode_with_prefix(self.code.as_ref(), data)
