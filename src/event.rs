@@ -46,7 +46,7 @@ where
     }
 
     /// Encode event data into an EVM log.
-    pub fn encode(&self, indices: &I, data: &D) -> Log {
+    pub fn encode(&self, indices: &I, data: &D) -> Log<'_> {
         Log {
             topics: I::to_topics(&self.topic0, indices),
             data: crate::encode(data).into(),
@@ -87,7 +87,7 @@ where
     }
 
     /// Encode event data into an EVM log.
-    pub fn encode(&self, indices: &I, data: &D) -> Log {
+    pub fn encode(&self, indices: &I, data: &D) -> Log<'_> {
         Log {
             topics: I::to_topics_anonymous(indices),
             data: crate::encode(data).into(),

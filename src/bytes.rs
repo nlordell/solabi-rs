@@ -176,7 +176,7 @@ impl TopicHash for Bytes<[u8]> {
 
 impl Encode for Bytes<&'_ [u8]> {
     fn size(&self) -> Size {
-        let words = (self.len() + 31) / 32;
+        let words = self.len().div_ceil(32);
         Size::Dynamic(1 + words, 0)
     }
 

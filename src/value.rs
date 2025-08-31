@@ -729,7 +729,7 @@ impl Array {
 
     /// Creates a new array value from a vector of values.
     pub fn from_values(values: Vec<Value>) -> Option<Self> {
-        let element_kind = values.get(0)?.kind();
+        let element_kind = values.first()?.kind();
         Self::new(element_kind, values)
     }
 
