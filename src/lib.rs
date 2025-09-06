@@ -436,7 +436,7 @@ mod tests {
             ),
         );
         assert_eq!(
-            encode_packed(&((10_i32, [vec![7_i16, 0x0506, -1], vec![4, 5]], 11_i32))),
+            encode_packed(&(10_i32, [vec![7_i16, 0x0506, -1], vec![4, 5]], 11_i32)),
             hex!("0000000a00070506ffff000400050000000b"),
         );
 
