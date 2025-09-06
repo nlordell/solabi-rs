@@ -137,17 +137,17 @@ impl Value {
     pub fn from_word(kind: &ValueKind, word: Word) -> Option<Self> {
         match kind {
             ValueKind::Int(bit_width) => {
-                Some(Self::Int(Int(*bit_width, Primitive::from_word(word))))
+                Some(Self::Int(Int(*bit_width, Primitive::from_word(word)?)))
             }
             ValueKind::Uint(bit_width) => {
-                Some(Self::Uint(Uint(*bit_width, Primitive::from_word(word))))
+                Some(Self::Uint(Uint(*bit_width, Primitive::from_word(word)?)))
             }
-            ValueKind::Address => Some(Self::Address(Primitive::from_word(word))),
-            ValueKind::Bool => Some(Self::Bool(Primitive::from_word(word))),
+            ValueKind::Address => Some(Self::Address(Primitive::from_word(word)?)),
+            ValueKind::Bool => Some(Self::Bool(Primitive::from_word(word)?)),
             ValueKind::FixedBytes(byte_length) => {
                 Some(Self::FixedBytes(FixedBytes(*byte_length, word)))
             }
-            ValueKind::Function => Some(Self::Function(Primitive::from_word(word))),
+            ValueKind::Function => Some(Self::Function(Primitive::from_word(word)?)),
             _ => None,
         }
     }

@@ -9,7 +9,7 @@ use crate::{
         DecodeError, Decoder,
     },
     encode::{Encode, Encoder, Size},
-    event::ParseError,
+    event::{FromTopicsError, ParseError},
     function::Selector,
     log::{Log, Topics},
     primitive::Word,
@@ -170,7 +170,7 @@ impl EventEncoder {
     /// value equal to the hash of its ABI-encoded value.
     pub fn decode(&self, log: &Log) -> Result<Vec<Value>, ParseError> {
         if log.topics.len() != self.topic_count() {
-            return Err(ParseError::Index);
+            return Err(ParseError::Topics(FromTopicsError::WrongCount));
         }
 
         let mut topics = log.topics.into_iter();
@@ -190,7 +190,7 @@ impl EventEncoder {
             .zip(topics)
         {
             *value = if kind.is_primitive() {
-                Value::from_word(kind, topic).unwrap()
+                Value::from_word(kind, topic).ok_or(FromTopicsError::InvalidData)?
             } else {
                 Value::FixedBytes(topic.into())
             };
@@ -468,7 +468,10 @@ mod tests {
         ] {
             let (event, encoder) = decl(signature);
             assert_eq!(selector, event.selector().unwrap());
-            assert!(matches!(encoder.decode(&log), Err(ParseError::Index)));
+            assert!(matches!(
+                encoder.decode(&log),
+                Err(ParseError::Topics(FromTopicsError::WrongCount))
+            ));
         }
     }
 
@@ -479,7 +482,7 @@ mod tests {
 
         assert!(matches!(
             encoder.decode(&Log::default()),
-            Err(ParseError::Index),
+            Err(ParseError::Topics(FromTopicsError::WrongCount)),
         ));
     }
 

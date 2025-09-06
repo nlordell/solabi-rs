@@ -333,9 +333,10 @@ pub trait ToTopic {
 }
 
 /// A trait for converting values from topics.
-pub trait FromTopic {
-    /// Returns the value as a EVM log topic.
-    fn from_topic(topic: Word) -> Self;
+pub trait FromTopic: Sized {
+    /// Returns the value from a EVM log topic. Returns `None` if the topic
+    /// does not encode a valid value.
+    fn from_topic(topic: Word) -> Option<Self>;
 }
 
 /// A trait for hashing fields for topic computation in dynamic types.
@@ -357,7 +358,7 @@ impl<T> FromTopic for T
 where
     T: Primitive,
 {
-    fn from_topic(topic: Word) -> Self {
+    fn from_topic(topic: Word) -> Option<Self> {
         Self::from_word(topic)
     }
 }
@@ -385,8 +386,8 @@ where
     T: ToOwned + ?Sized,
     T::Owned: FromTopic,
 {
-    fn from_topic(topic: Word) -> Self {
-        Cow::Owned(T::Owned::from_topic(topic))
+    fn from_topic(topic: Word) -> Option<Self> {
+        T::Owned::from_topic(topic).map(Cow::Owned)
     }
 }
 
@@ -490,8 +491,8 @@ where
 }
 
 impl<T> FromTopic for Vec<T> {
-    fn from_topic(_: Word) -> Self {
-        Self::default()
+    fn from_topic(_: Word) -> Option<Self> {
+        Some(Self::default())
     }
 }
 
@@ -531,8 +532,8 @@ impl ToTopic for String {
 }
 
 impl FromTopic for String {
-    fn from_topic(_: Word) -> Self {
-        Self::default()
+    fn from_topic(_: Word) -> Option<Self> {
+        Some(Self::default())
     }
 }
 
@@ -560,8 +561,8 @@ macro_rules! impl_to_from_topic_for_tuple {
         where
             $($t: FromTopic,)*
         {
-            fn from_topic(_: Word) -> Self {
-                ($($t::from_topic([0; 32]),)*)
+            fn from_topic(_: Word) -> Option<Self> {
+                Some(($($t::from_topic([0; 32])?,)*))
             }
         }
 

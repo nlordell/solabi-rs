@@ -15,13 +15,13 @@ use std::{
 
 /// A trait for converting to and from event indices.
 pub trait Indexed: Sized {
-    fn from_topics(topics: &Topics) -> Result<(Word, Self), IndexError>;
+    fn from_topics(topics: &Topics) -> Result<(Word, Self), FromTopicsError>;
     fn to_topics(topic0: &Word, indices: &Self) -> Topics;
 }
 
 /// A trait for converting to and from event indices.
 pub trait IndexedAnonymous: Sized {
-    fn from_topics_anonymous(topics: &Topics) -> Result<Self, IndexError>;
+    fn from_topics_anonymous(topics: &Topics) -> Result<Self, FromTopicsError>;
     fn to_topics_anonymous(&self) -> Topics;
 }
 
@@ -143,10 +143,10 @@ where
     }
 }
 
-/// An error parsing a log.
+/// An error parsing an event.
 pub enum ParseError {
-    /// An error parsing log indices.
-    Index,
+    /// An error parsing event indices.
+    Topics(FromTopicsError),
     /// The event's topic0 does not match the log's topic0.
     SelectorMismatch(Word),
     /// An error decoding log data.
@@ -156,7 +156,7 @@ pub enum ParseError {
 impl Debug for ParseError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Self::Index => f.debug_tuple("Index").finish(),
+            Self::Topics(err) => f.debug_tuple("FromTopics").field(err).finish(),
             Self::SelectorMismatch(topic0) => f
                 .debug_tuple("SelectorMismatch")
                 .field(&Hex(topic0))
@@ -169,7 +169,7 @@ impl Debug for ParseError {
 impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Self::Index => write!(f, "{IndexError}"),
+            Self::Topics(err) => write!(f, "{err}"),
             Self::SelectorMismatch(_) => f.write_str("event topic0 does not match log's topic0"),
             Self::Data(err) => write!(f, "{err}"),
         }
@@ -178,9 +178,9 @@ impl Display for ParseError {
 
 impl Error for ParseError {}
 
-impl From<IndexError> for ParseError {
-    fn from(_: IndexError) -> Self {
-        Self::Index
+impl From<FromTopicsError> for ParseError {
+    fn from(err: FromTopicsError) -> Self {
+        Self::Topics(err)
     }
 }
 
@@ -190,20 +190,25 @@ impl From<DecodeError> for ParseError {
     }
 }
 
-/// An error parsing log indices.
-///
-/// This typically indicates that the log contains the wrong number of topics,
-/// or that the data included in the topics does not meet expectations.
+/// An error parsing log topics.
 #[derive(Debug)]
-pub struct IndexError;
+pub enum FromTopicsError {
+    /// The log contains the wrong number of topics.
+    WrongCount,
+    /// The topic data was invalid.
+    InvalidData,
+}
 
-impl Display for IndexError {
+impl Display for FromTopicsError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str("event indices does not match log topics")
+        match self {
+            Self::WrongCount => f.write_str("event indices does not match log topics"),
+            Self::InvalidData => f.write_str("log topic data is invalid for event index"),
+        }
     }
 }
 
-impl Error for IndexError {}
+impl Error for FromTopicsError {}
 
 macro_rules! impl_indexed {
     ($($t:ident),*) => {
@@ -212,12 +217,13 @@ macro_rules! impl_indexed {
         where
             $($t: ToTopic + FromTopic,)*
         {
-            fn from_topics(topics: &Topics) -> Result<(Word, Self), IndexError> {
+            fn from_topics(topics: &Topics) -> Result<(Word, Self), FromTopicsError> {
                 let mut topics = topics.iter().copied();
-                let topic0 = topics.next().ok_or(IndexError)?;
-                $(let $t = $t::from_topic(topics.next().ok_or(IndexError)?);)*
+                let topic0 = topics.next().ok_or(FromTopicsError::WrongCount)?;
+                $(let $t = $t::from_topic(topics.next().ok_or(FromTopicsError::WrongCount)?)
+                    .ok_or(FromTopicsError::InvalidData)?;)*
                 if topics.next().is_some() {
-                    return Err(IndexError);
+                    return Err(FromTopicsError::WrongCount);
                 }
                 Ok((topic0, ($($t,)*)))
             }
@@ -236,11 +242,12 @@ macro_rules! impl_indexed {
         where
             $($t: ToTopic + FromTopic,)*
         {
-            fn from_topics_anonymous(topics: &Topics) -> Result<Self, IndexError> {
+            fn from_topics_anonymous(topics: &Topics) -> Result<Self, FromTopicsError> {
                 let mut topics = topics.iter().copied();
-                $(let $t = $t::from_topic(topics.next().ok_or(IndexError)?);)*
+                $(let $t = $t::from_topic(topics.next().ok_or(FromTopicsError::WrongCount)?)
+                    .ok_or(FromTopicsError::InvalidData)?;)*
                 if topics.next().is_some() {
-                    return Err(IndexError);
+                    return Err(FromTopicsError::WrongCount);
                 }
                 Ok(($($t,)*))
             }
@@ -305,10 +312,16 @@ mod tests {
         );
 
         let transfer = EventEncoder::<(Address, Address, U256), ()>::new(selector);
-        assert!(matches!(transfer.decode(&log), Err(ParseError::Index)));
+        assert!(matches!(
+            transfer.decode(&log),
+            Err(ParseError::Topics(FromTopicsError::WrongCount))
+        ));
 
         let transfer = EventEncoder::<(Address,), (Address, U256)>::new(selector);
-        assert!(matches!(transfer.decode(&log), Err(ParseError::Index)));
+        assert!(matches!(
+            transfer.decode(&log),
+            Err(ParseError::Topics(FromTopicsError::WrongCount))
+        ));
     }
 
     #[test]

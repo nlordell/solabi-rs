@@ -88,12 +88,16 @@ impl Primitive for ExternalFunction {
         word
     }
 
-    fn from_word(word: Word) -> Self {
+    fn from_word(word: Word) -> Option<Self> {
+        if word[24..] != [0; 8] {
+            return None;
+        }
+
         let mut address = Address::default();
         let mut selector = Selector(Default::default());
         address.copy_from_slice(&word[..20]);
         selector.0.copy_from_slice(&word[20..24]);
-        Self { address, selector }
+        Some(Self { address, selector })
     }
 }
 

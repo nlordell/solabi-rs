@@ -139,10 +139,13 @@ macro_rules! impl_fixed_bytes {
                 word
             }
 
-            fn from_word(word: Word) -> Self {
+            fn from_word(word: Word) -> Option<Self> {
+                if word[$n..] != [0; 32 - $n] {
+                    return None;
+                }
                 let mut bytes = Self::default();
                 bytes.copy_from_slice(&word[..$n]);
-                bytes
+                Some(bytes)
             }
         }
 
@@ -273,8 +276,8 @@ impl ToTopic for Bytes<Vec<u8>> {
 }
 
 impl FromTopic for Bytes<Vec<u8>> {
-    fn from_topic(_: Word) -> Self {
-        Self::default()
+    fn from_topic(_: Word) -> Option<Self> {
+        Some(Self::default())
     }
 }
 

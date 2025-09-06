@@ -77,8 +77,8 @@ macro_rules! impl_bitint {
                 self.0.to_word()
             }
 
-            fn from_word(word: Word) -> Self {
-                Self::new_truncated(<$i>::from_word(word))
+            fn from_word(word: Word) -> Option<Self> {
+                Self::new(<$i>::from_word(word)?)
             }
         }
 
