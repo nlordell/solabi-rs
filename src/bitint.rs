@@ -3,7 +3,10 @@
 //! These types are needed because there aren't Rust equivalents for all
 //! Solidity integer types (`int96` for example).
 
-use crate::primitive::{Primitive, Word};
+use crate::{
+    encode_packed::EncodePacked,
+    primitive::{Primitive, Word},
+};
 use ethprim::{I256, U256};
 use std::{
     error::Error,
@@ -76,6 +79,17 @@ macro_rules! impl_bitint {
 
             fn from_word(word: Word) -> Self {
                 Self::new_truncated(<$i>::from_word(word))
+            }
+        }
+
+        impl EncodePacked for $t {
+            fn packed_size(&self) -> usize {
+                $n / 8
+            }
+
+            fn encode_packed(&self, out: &mut [u8]) {
+                const OFFSET: usize = mem::size_of::<$i>() - ($n / 8);
+                out.copy_from_slice(&self.0.to_be_bytes()[OFFSET..])
             }
         }
 
@@ -167,6 +181,7 @@ impl_bitint! {
     impl Int208 <signed 208> (I256);
     impl Int216 <signed 216> (I256);
     impl Int224 <signed 224> (I256);
+    impl Int232 <signed 232> (I256);
     impl Int240 <signed 240> (I256);
     impl Int248 <signed 248> (I256);
     impl Uint24 <unsigned 24> (u32);
@@ -192,6 +207,7 @@ impl_bitint! {
     impl Uint208 <unsigned 208> (U256);
     impl Uint216 <unsigned 216> (U256);
     impl Uint224 <unsigned 224> (U256);
+    impl Uint232 <unsigned 232> (U256);
     impl Uint240 <unsigned 240> (U256);
     impl Uint248 <unsigned 248> (U256);
 }

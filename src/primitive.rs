@@ -74,7 +74,7 @@ impl Primitive for bool {
 impl Primitive for Address {
     fn to_word(&self) -> Word {
         let mut word = Word::default();
-        word[12..].copy_from_slice(&**self);
+        word[12..].copy_from_slice(self.as_ref());
         word
     }
 

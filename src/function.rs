@@ -3,6 +3,7 @@
 use crate::{
     decode::{Decode, DecodeError},
     encode::Encode,
+    encode_packed::EncodePacked,
     fmt::Hex,
     primitive::{Primitive, Word},
 };
@@ -93,6 +94,17 @@ impl Primitive for ExternalFunction {
         address.copy_from_slice(&word[..20]);
         selector.0.copy_from_slice(&word[20..24]);
         Self { address, selector }
+    }
+}
+
+impl EncodePacked for ExternalFunction {
+    fn packed_size(&self) -> usize {
+        24
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        out[..20].copy_from_slice(self.address.as_ref());
+        out[20..].copy_from_slice(self.selector.as_ref());
     }
 }
 

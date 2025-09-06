@@ -337,11 +337,11 @@ where
     T: Encode,
 {
     fn size(&self) -> Size {
-        (**self).size()
+        self.as_slice().size()
     }
 
     fn encode(&self, encoder: &mut Encoder) {
-        (**self).encode(encoder)
+        self.as_slice().encode(encoder)
     }
 }
 
@@ -361,11 +361,11 @@ impl Encode for &'_ str {
 
 impl Encode for String {
     fn size(&self) -> Size {
-        (**self).size()
+        self.as_str().size()
     }
 
     fn encode(&self, encoder: &mut Encoder) {
-        (**self).encode(encoder)
+        self.as_str().encode(encoder)
     }
 }
 
