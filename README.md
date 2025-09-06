@@ -82,4 +82,3 @@ complete, there are a couple of features that expected to be implemented before
       Other,
   }
   ```
-- [ ] Solidity packed encoding.
