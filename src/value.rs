@@ -580,10 +580,6 @@ pub struct Int(BitWidth, I256);
 
 impl Int {
     /// Creates a new signed integer.
-    ///
-    /// # Panics
-    ///
-    /// Panics on invalid bit-width.
     pub fn new(bit_width: u32, value: I256) -> Option<Self> {
         let bit_width = BitWidth::new(bit_width)?;
         let value = bit_width.resize(value)?;
@@ -611,10 +607,6 @@ pub struct Uint(BitWidth, U256);
 
 impl Uint {
     /// Creates a new unsigned integer.
-    ///
-    /// # Panics
-    ///
-    /// Panics on invalid bit-width.
     pub fn new(bit_width: u32, value: U256) -> Option<Self> {
         let bit_width = BitWidth::new(bit_width)?;
         let value = bit_width.resize(value)?;
