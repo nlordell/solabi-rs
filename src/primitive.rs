@@ -7,17 +7,25 @@ pub type Word = [u8; 32];
 
 /// Trait reprenting any type that can be converted to and from a single
 /// Ethereum 32-byte word.
-pub trait Primitive {
+pub trait Primitive: Sized {
     /// Converts a primitive type to an Ethereum 32-byte word.
     fn to_word(&self) -> Word;
 
-    /// Converts an Ethereum 32-byte word as the type.
+    /// Converts an Ethereum 32-byte word as the type. Returns `None` if the
+    /// word is incorrectly padded or sign-extended. In other words a word must
+    /// round trip.
     ///
-    /// Note that this should implement casting semantics. In other words a word
-    /// doesn't necessarily round trip as some bytes may be truncated during
-    /// conversion. For example, `0xfff..fff` converted to a `uint8` will result
-    /// in `0xff` and when converted back to a word would yield `0x000..0ff`.
-    fn from_word(word: Word) -> Self;
+    /// # Examples
+    ///
+    /// ```
+    /// # use solabi::primitive::Primitive as _;
+    /// assert_eq!(i8::from_word([0; 32]), Some(0));
+    /// assert_eq!(i8::from_word([0xff; 32]), Some(-1));
+    /// assert_eq!(i8::from_word([0xfe; 32]), None);
+    /// assert_eq!(u8::from_word([0; 32]), Some(0));
+    /// assert_eq!(u8::from_word([0xff; 32]), None);
+    /// ```
+    fn from_word(word: Word) -> Option<Self>;
 }
 
 macro_rules! impl_primitive_for_i256 {
@@ -27,8 +35,8 @@ macro_rules! impl_primitive_for_i256 {
                 self.to_be_bytes()
             }
 
-            fn from_word(word: Word) -> Self {
-                Self::from_be_bytes(word)
+            fn from_word(word: Word) -> Option<Self> {
+                Some(Self::from_be_bytes(word))
             }
         }
     )*};
@@ -46,8 +54,14 @@ macro_rules! impl_primitive_for_integer {
                 self.as_i256().to_word()
             }
 
-            fn from_word(word: Word) -> Self {
-                *I256::from_word(word).low() as _
+            fn from_word(word: Word) -> Option<Self> {
+                #[allow(unused_comparisons)]
+                const SIGNED: bool = <$t>::MIN < 0;
+                if SIGNED {
+                    I256::from_be_bytes(word).try_into().ok()
+                } else {
+                    U256::from_be_bytes(word).try_into().ok()
+                }
             }
         }
     )*};
@@ -66,8 +80,12 @@ impl Primitive for bool {
         ]
     }
 
-    fn from_word(word: Word) -> Self {
-        word != [0; 32]
+    fn from_word(word: Word) -> Option<Self> {
+        match U256::from_be_bytes(word).into_words() {
+            (0, 0) => Some(false),
+            (0, 1) => Some(true),
+            _ => None,
+        }
     }
 }
 
@@ -78,8 +96,8 @@ impl Primitive for Address {
         word
     }
 
-    fn from_word(word: Word) -> Self {
-        Self::from_slice(&word[12..])
+    fn from_word(word: Word) -> Option<Self> {
+        (word[..12] == [0; 12]).then_some(Self::from_slice(&word[12..]))
     }
 }
 
@@ -88,8 +106,8 @@ impl Primitive for Digest {
         **self
     }
 
-    fn from_word(word: Word) -> Self {
-        Self(word)
+    fn from_word(word: Word) -> Option<Self> {
+        Some(Self(word))
     }
 }
 

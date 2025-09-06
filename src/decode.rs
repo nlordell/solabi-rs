@@ -157,7 +157,7 @@ where
     }
 
     fn decode(decoder: &mut Decoder) -> Result<Self, DecodeError> {
-        Ok(T::from_word(decoder.read_word()?))
+        T::from_word(decoder.read_word()?).ok_or(DecodeError::InvalidData)
     }
 }
 
