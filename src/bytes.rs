@@ -130,7 +130,7 @@ impl ToOwned for Bytes<[u8]> {
     }
 }
 
-macro_rules! impl_primitive_for_fixed_bytes {
+macro_rules! impl_fixed_bytes {
     ($($n:literal,)*) => {$(
         impl Primitive for Bytes<[u8; $n]> {
             fn to_word(&self) -> Word {
@@ -145,10 +145,20 @@ macro_rules! impl_primitive_for_fixed_bytes {
                 bytes
             }
         }
+
+        impl EncodePacked for Bytes<[u8; $n]> {
+            fn packed_size(&self) -> usize {
+                $n
+            }
+
+            fn encode_packed(&self, out: &mut [u8]) {
+                out.copy_from_slice(self.as_ref())
+            }
+        }
     )*};
 }
 
-impl_primitive_for_fixed_bytes! {
+impl_fixed_bytes! {
      1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16,
     17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
 }
@@ -160,6 +170,16 @@ impl Encode for Bytes<[u8]> {
 
     fn encode(&self, encoder: &mut Encoder) {
         Bytes(&self.0).encode(encoder)
+    }
+}
+
+impl EncodePacked for Bytes<[u8]> {
+    fn packed_size(&self) -> usize {
+        Bytes(&self.0).packed_size()
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        Bytes(&self.0).encode_packed(out)
     }
 }
 
@@ -187,15 +207,13 @@ impl Encode for Bytes<&'_ [u8]> {
     }
 }
 
-impl<T> EncodePacked for Bytes<T>
-where
-    T: AsRef<[u8]> + ?Sized,
-{
+impl EncodePacked for Bytes<&'_ [u8]> {
     fn packed_size(&self) -> usize {
-        self.as_bytes().len()
+        self.len()
     }
+
     fn encode_packed(&self, out: &mut [u8]) {
-        out[..self.as_bytes().len()].copy_from_slice(self.as_bytes());
+        out.copy_from_slice(self);
     }
 }
 
@@ -224,6 +242,16 @@ impl Encode for Bytes<Vec<u8>> {
 
     fn encode(&self, encoder: &mut Encoder) {
         Bytes(&self[..]).encode(encoder)
+    }
+}
+
+impl EncodePacked for Bytes<Vec<u8>> {
+    fn packed_size(&self) -> usize {
+        Bytes(&self[..]).packed_size()
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        Bytes(&self[..]).encode_packed(out)
     }
 }
 

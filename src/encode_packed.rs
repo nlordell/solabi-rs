@@ -1,9 +1,8 @@
 //! Module implementing packed encoding.
 
+use crate::{bytes::Bytes, encode::BufferSizeError};
 use ethprim::{Address, Digest, I256, U256};
-
-use crate::encode::BufferSizeError;
-use std::borrow::Cow;
+use std::{borrow::Cow, mem};
 
 /// Represents a packed-encodable type
 pub trait EncodePacked {
@@ -14,8 +13,8 @@ pub trait EncodePacked {
     ///
     /// # Panics
     ///
-    /// Encoding values that do not match what is returned by [`Encode::size`]
-    /// may cause the encoding to panic.
+    /// Panics if the supplied buffer's length is not what is returned by
+    /// [`EncodePacked::packed_size`].
     fn encode_packed(&self, out: &mut [u8]);
 }
 
@@ -26,7 +25,8 @@ pub fn encode_packed<T: EncodePacked>(value: &T) -> Vec<u8> {
     buf
 }
 
-/// Packed-encodes a value to the specified buffer.
+/// Packed-encodes a value to the specified buffer. Returns an `Err` if the
+/// buffer size does not exactly match the packed data size for the value.
 pub fn encode_packed_to<T>(buffer: &mut [u8], value: &T) -> Result<(), BufferSizeError>
 where
     T: EncodePacked,
@@ -40,22 +40,53 @@ where
 }
 
 macro_rules! impl_encode_packed_for_integer {
-    ($($t:ty),* $(,)?) => {
-        $(
-            impl EncodePacked for $t {
-                fn encode_packed(&self, out: &mut [u8]) {
-                    out.copy_from_slice(&self.to_be_bytes());
-                }
-
-                fn packed_size(&self) -> usize {
-                    std::mem::size_of::<Self>()
-                }
+    ($($t:ty,)*) => {$(
+        impl EncodePacked for $t {
+            fn packed_size(&self) -> usize {
+                mem::size_of::<Self>()
             }
-        )*
-    };
+
+            fn encode_packed(&self, out: &mut [u8]) {
+                out.copy_from_slice(&self.to_be_bytes())
+            }
+        }
+    )*};
 }
 
-impl_encode_packed_for_integer!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize,);
+impl_encode_packed_for_integer! {
+    i8, i16, i32, i64, i128, I256, isize,
+    u8, u16, u32, u64, u128, U256, usize,
+}
+
+impl EncodePacked for bool {
+    fn packed_size(&self) -> usize {
+        1
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        out.copy_from_slice(&[*self as _]);
+    }
+}
+
+impl EncodePacked for Address {
+    fn packed_size(&self) -> usize {
+        20
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        out.copy_from_slice(self.as_ref())
+    }
+}
+
+impl EncodePacked for Digest {
+    fn packed_size(&self) -> usize {
+        32
+    }
+
+    fn encode_packed(&self, out: &mut [u8]) {
+        out.copy_from_slice(self.as_ref())
+    }
+}
 
 macro_rules! impl_encode_packed_for_ref {
     () => {
@@ -107,6 +138,13 @@ where
     impl_encode_packed_for_ref!();
 }
 
+impl<T> EncodePacked for &'_ [T]
+where
+    T: EncodePacked,
+{
+    impl_encode_packed_for_ref!();
+}
+
 impl<T> EncodePacked for Vec<T>
 where
     T: EncodePacked,
@@ -116,11 +154,11 @@ where
 
 impl EncodePacked for str {
     fn packed_size(&self) -> usize {
-        self.as_bytes().packed_size()
+        Bytes(self.as_bytes()).packed_size()
     }
 
     fn encode_packed(&self, out: &mut [u8]) {
-        self.as_bytes().encode_packed(out)
+        Bytes(self.as_bytes()).encode_packed(out)
     }
 }
 
@@ -164,7 +202,6 @@ macro_rules! impl_encode_packed_for_tuple {
                 let mut offset = 0;
 
                 $(
-
                     let end = offset + $t.packed_size();
                     $t.encode_packed(&mut out[offset..end]);
                     offset = end;
@@ -214,55 +251,6 @@ impl_encode_packed_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, 
 impl_encode_packed_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD }
 impl_encode_packed_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE }
 impl_encode_packed_for_tuple! { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, AA, AB, AC, AD, AE, AF }
-
-macro_rules! impl_encode_packed_for_i256 {
-    ($($t:ty,)*) => {$(
-        impl EncodePacked for $t {
-            fn packed_size(&self) -> usize {
-                32
-            }
-
-            fn encode_packed(&self, out: &mut [u8]) {
-                self.to_be_bytes().encode_packed(out)
-            }
-        }
-    )*};
-}
-
-impl_encode_packed_for_i256! {
-    I256,
-    U256,
-}
-
-impl EncodePacked for bool {
-    fn packed_size(&self) -> usize {
-        1
-    }
-
-    fn encode_packed(&self, out: &mut [u8]) {
-        out[0] = *self as u8;
-    }
-}
-
-impl EncodePacked for Address {
-    fn packed_size(&self) -> usize {
-        20
-    }
-
-    fn encode_packed(&self, out: &mut [u8]) {
-        out.copy_from_slice(&**self);
-    }
-}
-
-impl EncodePacked for Digest {
-    fn packed_size(&self) -> usize {
-        32
-    }
-
-    fn encode_packed(&self, out: &mut [u8]) {
-        out.copy_from_slice(&**self);
-    }
-}
 
 #[cfg(test)]
 mod tests {
