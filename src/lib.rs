@@ -111,6 +111,7 @@
 //! > automatically implement these traits in the future.
 
 pub mod abi;
+pub mod bitint;
 pub mod bytes;
 pub mod constructor;
 pub mod decode;
@@ -128,6 +129,14 @@ pub mod value;
 /// The `solabi` prelude.
 pub mod prelude {
     pub use crate::{
+        bitint::{
+            Int104, Int112, Int120, Int128, Int136, Int144, Int152, Int16, Int160, Int168, Int176,
+            Int184, Int192, Int200, Int208, Int216, Int224, Int24, Int240, Int248, Int256, Int32,
+            Int40, Int48, Int56, Int64, Int72, Int8, Int80, Int88, Int96, Uint104, Uint112,
+            Uint120, Uint128, Uint136, Uint144, Uint152, Uint16, Uint160, Uint168, Uint176,
+            Uint184, Uint192, Uint200, Uint208, Uint216, Uint224, Uint24, Uint240, Uint248,
+            Uint256, Uint32, Uint40, Uint48, Uint56, Uint64, Uint72, Uint8, Uint80, Uint88, Uint96,
+        },
         bytes::Bytes,
         constructor::ConstructorEncoder,
         error::ErrorEncoder,
