@@ -454,8 +454,7 @@ mod tests {
 
         let fields = [
             Value::FixedBytes(
-                hex!("fde66483b19031a1e81f4f8d6289710f7fef903e4398dc22f882f8a44382d510")
-                    .into(),
+                hex!("fde66483b19031a1e81f4f8d6289710f7fef903e4398dc22f882f8a44382d510").into(),
             ),
             Value::Address(address!("0x0101010101010101010101010101010101010101")),
             Value::Uint(Uint::new(128, uint!("2")).unwrap()),
