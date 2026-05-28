@@ -271,7 +271,7 @@ impl Encode for Encodable<'_> {
             Value::Uint(value) => value.1.size(),
             Value::Address(value) => value.size(),
             Value::Bool(value) => value.size(),
-            Value::FixedBytes(value) => value.1.size(),
+            Value::FixedBytes(value) => Bytes(value.1).size(),
             Value::Function(value) => value.size(),
             Value::Bytes(value) => Bytes::borrowed(value).size(),
             Value::String(value) => value.size(),
@@ -290,7 +290,7 @@ impl Encode for Encodable<'_> {
             Value::Uint(value) => value.1.encode(encoder),
             Value::Address(value) => value.encode(encoder),
             Value::Bool(value) => value.encode(encoder),
-            Value::FixedBytes(value) => value.1.encode(encoder),
+            Value::FixedBytes(value) => Bytes(value.1).encode(encoder),
             Value::Function(value) => value.encode(encoder),
             Value::Bytes(value) => Bytes::borrowed(value).encode(encoder),
             Value::String(value) => value.encode(encoder),
@@ -338,7 +338,7 @@ impl DecodeContext for Decodable {
             ValueKind::Address => Value::Address(decoder.read()?),
             ValueKind::Bool => Value::Bool(decoder.read()?),
             ValueKind::FixedBytes(byte_length) => {
-                Value::FixedBytes(FixedBytes(*byte_length, decoder.read()?))
+                Value::FixedBytes(FixedBytes(*byte_length, decoder.read::<Bytes<_>>()?.0))
             }
             ValueKind::Function => Value::Function(decoder.read()?),
             ValueKind::FixedArray(len, element) => Value::FixedArray(Array(

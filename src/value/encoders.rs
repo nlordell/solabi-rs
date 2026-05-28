@@ -442,6 +442,39 @@ mod tests {
     }
 
     #[test]
+    fn event_with_non_indexed_fixed_bytes() {
+        // Regression: non-indexed `bytesN` fields used to fall through to the
+        // generic `[u8; 32]` decode path, which decodes 32 separate ABI words
+        // (one per byte) and fails on any non-trivial value.
+        let event = EventDescriptor::parse_declaration(
+            "event Created(bytes32 gameId, address player, uint128 capacity)",
+        )
+        .unwrap();
+        let encoder = EventEncoder::new(&event).unwrap();
+
+        let fields = [
+            Value::FixedBytes(
+                hex!("fde66483b19031a1e81f4f8d6289710f7fef903e4398dc22f882f8a44382d510").into(),
+            ),
+            Value::Address(address!("0x0101010101010101010101010101010101010101")),
+            Value::Uint(Uint::new(128, uint!("2")).unwrap()),
+        ];
+
+        let log = Log {
+            topics: Topics::from([event.selector().unwrap()]),
+            data: hex!(
+                "fde66483b19031a1e81f4f8d6289710f7fef903e4398dc22f882f8a44382d510
+                 0000000000000000000000000101010101010101010101010101010101010101
+                 0000000000000000000000000000000000000000000000000000000000000002"
+            )[..]
+                .into(),
+        };
+
+        assert_eq!(encoder.encode(&fields).unwrap(), log);
+        assert_eq!(encoder.decode(&log).unwrap(), fields);
+    }
+
+    #[test]
     fn fails_to_decode_event_with_different_indices() {
         let decl = |s: &str| {
             let event = EventDescriptor::parse_declaration(s).unwrap();
